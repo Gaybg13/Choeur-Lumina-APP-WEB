@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "629726175588",
+    "project_id": "chorale-lumina-app",
+    "storage_bucket": "chorale-lumina-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:629726175588:android:2a30fb017602cd18715a71",
+        "android_client_info": {
+          "package_name": "com.choraleluminaapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3cubm-G-TinM9602ZXoMuVJChj8tbDZY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
