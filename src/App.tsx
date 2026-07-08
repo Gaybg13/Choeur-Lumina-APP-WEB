@@ -117,7 +117,7 @@ export default function App() {
       break;
     case "admin":
       content = member?.role === "admin"
-        ? <AdminScreen members={members} events={events} onBack={() => setTab("profile")} />
+        ? <AdminScreen members={members} events={events} songs={songs} onBack={() => setTab("profile")} />
         : <HomeScreen member={member} nextEvent={nextEvent} songs={songs} onOpen={setTab} />;
       break;
     case "profile":

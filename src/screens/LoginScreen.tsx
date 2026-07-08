@@ -64,7 +64,7 @@ export function LoginScreen() {
     try {
       const memberQuery = query(
         collection(db, "members"),
-        where("inviteCode", "==", inviteCode.trim().toUpperCase()),
+        where("inviteCode", "==", inviteCode.trim()),
         where("claimed", "==", false)
       );
       const snap = await getDocs(memberQuery);
@@ -218,10 +218,10 @@ export function LoginScreen() {
             >
               {showPassword ? (
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m3 3 18 18" />
+                  <path d="M3 3l18 18" />
                   <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7" />
-                  <path d="M9.9 4.2A10.6 10.6 0 0 1 12 4c5.5 0 9 5.2 9 5.2a15.5 15.5 0 0 1-3 3.8" />
-                  <path d="M6.6 6.6C4.2 8.1 3 10 3 10s3.5 5.2 9 5.2c1 0 1.9-.2 2.8-.5" />
+                  <path d="M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9 5 9 5s-1.1 1.6-3 3" />
+                  <path d="M6.6 6.6C4.4 8 3 10 3 10s3.5 5 9 5c1.2 0 2.3-.2 3.3-.6" />
                 </svg>
               ) : (
                 <svg viewBox="0 0 24 24" aria-hidden="true">

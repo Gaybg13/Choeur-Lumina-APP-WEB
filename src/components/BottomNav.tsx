@@ -7,7 +7,7 @@ export type Tab =
   | "admin"
   | "profile";
 
-const items: Array<{ id: Tab; label: string; icon: string }> = [
+const items: Array<{ id: Exclude<Tab, "admin">; label: string; icon: string }> = [
   { id: "home", label: "Accueil", icon: "⌂" },
   { id: "songs", label: "Chants", icon: "♫" },
   { id: "agenda", label: "Agenda", icon: "▣" },

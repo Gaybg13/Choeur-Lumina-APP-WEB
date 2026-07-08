@@ -1074,462 +1074,130 @@ input, textarea {
   .admin-stats article { padding: 14px 12px; }
 }
 
-/* ===== Ajustement sobre du contrôle de mot de passe ===== */
-.auth-eye {
-  right: 14px;
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: rgba(7, 20, 43, .58);
-  border: 1px solid rgba(215, 179, 93, .24);
-  color: rgba(255, 255, 255, .86);
-  font-size: inherit;
-  transition: background .18s ease, border-color .18s ease, transform .18s ease;
-}
-.auth-eye:hover,
-.auth-eye:focus-visible {
-  background: rgba(7, 20, 43, .82);
-  border-color: rgba(215, 179, 93, .52);
-  outline: none;
-}
-.auth-eye:active { transform: translateY(-50%) scale(.96); }
-.auth-eye svg {
-  width: 23px;
-  height: 23px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+
+/* ===== Profil administrateur — aligné avec la logique Android ===== */
+.profile-admin-card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  gap: 14px;
+  align-items: start;
+  background:
+    linear-gradient(145deg, rgba(16,43,85,.98), rgba(23,63,119,.96));
+  color: white;
+  border: 1px solid rgba(215,197,137,.32);
 }
 
-/* ===== Accès Administration depuis le profil ===== */
-.profile-admin-button {
-  width: 100%;
-  margin: 16px 0;
-  padding: 15px 16px;
-  border: 0;
-  border-radius: 18px;
-  background: linear-gradient(145deg, #102b55, #173b6c);
-  color: white;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 13px;
-  text-align: left;
-  box-shadow: 0 10px 24px rgba(16, 43, 85, .17);
+.profile-admin-card::after {
+  content: "";
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  right: -52px;
+  top: -68px;
+  border-radius: 50%;
+  background: rgba(219,199,139,.08);
 }
-.profile-admin-button > span:nth-child(2) { display: grid; gap: 3px; }
-.profile-admin-button strong { font-size: 1rem; }
-.profile-admin-button small { color: rgba(255,255,255,.72); }
+
 .profile-admin-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 13px;
+  width: 54px;
+  height: 54px;
+  border-radius: 17px;
   display: grid;
   place-items: center;
-  background: rgba(215, 179, 93, .14);
-  color: #dfc477;
+  background: rgba(216,195,131,.14);
+  border: 1px solid rgba(216,195,131,.26);
 }
-.profile-admin-icon svg,
-.profile-admin-chevron {
-  width: 22px;
-  height: 22px;
+
+.profile-admin-icon svg {
+  width: 30px;
+  height: 30px;
   fill: none;
-  stroke: currentColor;
+  stroke: #e7d69d;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.profile-admin-chevron { color: rgba(255,255,255,.72); }
 
-/* ===== Administration inspirée de la version Android ===== */
-.admin-topbar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  min-height: calc(64px + env(safe-area-inset-top));
-  padding: env(safe-area-inset-top) 14px 0;
-  background: var(--navy);
+.profile-admin-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.profile-admin-kicker {
+  display: block;
+  margin-bottom: 5px;
+  color: #e1cf93;
+  font-size: .7rem;
+  font-weight: 850;
+  letter-spacing: .12em;
+}
+
+.profile-admin-card h2 {
+  margin: 0 0 6px;
   color: white;
-  display: grid;
-  grid-template-columns: 48px 1fr 48px;
+}
+
+.profile-admin-card p {
+  margin: 0;
+  color: rgba(255,255,255,.76);
+  line-height: 1.45;
+  font-size: .9rem;
+}
+
+.profile-admin-button {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-top: 4px;
+  min-height: 48px;
+  display: flex;
   align-items: center;
-  box-shadow: 0 6px 18px rgba(12, 35, 73, .14);
-}
-.admin-topbar strong {
-  text-align: center;
-  color: white;
-  font-size: 1.12rem;
-  letter-spacing: .01em;
-}
-.admin-back-button {
-  width: 42px;
-  height: 42px;
-  border: 0;
-  border-radius: 13px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  border: 1px solid rgba(230,214,165,.28);
+  border-radius: 14px;
   background: rgba(255,255,255,.08);
   color: white;
-  display: grid;
-  place-items: center;
+  font-weight: 800;
+  font-size: .95rem;
 }
+
+.profile-admin-button svg,
 .admin-back-button svg {
-  width: 24px;
-  height: 24px;
+  width: 21px;
+  height: 21px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.admin-topbar-spacer { width: 48px; }
-.android-admin-layout { position: relative; padding-bottom: 120px; }
 
-.presence-overview-button {
-  width: 100%;
-  border: 1px solid #e3e8ef;
-  border-radius: 20px;
-  padding: 16px;
-  background: white;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 13px;
-  text-align: left;
-  color: #172845;
-  box-shadow: 0 8px 24px rgba(20, 40, 70, .07);
-}
-.presence-overview-button > span:nth-child(2) { display: grid; gap: 4px; }
-.presence-overview-button strong { font-size: .98rem; }
-.presence-overview-button small { color: #758197; line-height: 1.35; }
-.presence-button-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  background: #eef3fb;
-  color: var(--navy);
-}
-.presence-button-icon svg,
-.presence-chevron {
-  width: 22px;
-  height: 22px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.presence-chevron { color: #8794a8; }
-
-.admin-members-heading { margin: 24px 2px 12px; }
-.admin-members-heading h1 {
-  margin: 4px 0 0;
-  font-size: 1.16rem;
-  color: #182b49;
-}
-.admin-kicker-simple {
-  color: #8d7440;
-  font-weight: 800;
-  font-size: .68rem;
-  letter-spacing: .12em;
-}
-.android-member-list { display: grid; gap: 12px; }
-.android-member-card {
-  background: white;
-  border: 1px solid #e4e8ee;
-  border-radius: 20px;
-  padding: 15px;
-  box-shadow: 0 7px 22px rgba(20, 40, 70, .06);
-}
-.android-member-card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-.android-member-identity {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.admin-member-avatar {
-  width: 46px;
-  height: 46px;
-  flex: 0 0 46px;
-  border-radius: 15px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #162f5d, #244b82);
-  color: #e1c77d;
-  font-size: .82rem;
-  font-weight: 850;
-  letter-spacing: .04em;
-}
-.android-member-identity h2 {
-  margin: 0;
-  font-size: 1rem;
-  color: #132744;
-  overflow-wrap: anywhere;
-}
-.android-member-identity p {
-  margin: 5px 0 0;
-  color: #778398;
-  font-size: .82rem;
-}
-.android-member-identity p span { color: #c2a45e; }
-.android-member-actions { display: flex; gap: 5px; flex: 0 0 auto; }
-.android-member-actions button {
-  width: 38px;
-  height: 38px;
-  border: 0;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: #eef2f7;
-  color: #28496e;
-}
-.android-member-actions button.danger { background: #fff1f2; color: #a13b48; }
-.android-member-actions svg,
-.copy-code-button svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.android-member-status-row {
-  margin-top: 13px;
-  padding-top: 12px;
-  border-top: 1px solid #edf0f4;
-}
-.account-state {
+.admin-back-button {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: .78rem;
-  font-weight: 800;
-}
-.account-state i { width: 8px; height: 8px; border-radius: 50%; }
-.account-state.active { color: #2b6a3d; }
-.account-state.active i { background: #4d9a63; box-shadow: 0 0 0 4px #e9f5ec; }
-.account-state.pending { color: #8a6518; }
-.account-state.pending i { background: #d3a53e; box-shadow: 0 0 0 4px #fff5dd; }
-.invitation-state {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.invite-code-label {
-  color: #6d788c;
-  font-size: .78rem;
-}
-.invite-code-label strong {
-  color: #263e62;
-  letter-spacing: .06em;
-}
-.copy-code-button {
-  margin-left: auto;
-  width: 34px;
-  height: 34px;
-  border: 0;
-  border-radius: 11px;
-  background: #edf2f7;
-  color: #29496f;
-  display: grid;
-  place-items: center;
-}
-.admin-fab {
-  position: fixed;
-  right: max(calc((100vw - 760px) / 2 + 20px), 20px);
-  bottom: calc(86px + env(safe-area-inset-bottom));
-  width: 58px;
-  height: 58px;
-  border: 0;
-  border-radius: 18px;
-  background: linear-gradient(145deg, #102b55, #1d477f);
-  color: #ead89d;
-  font-size: 2rem;
-  line-height: 1;
-  box-shadow: 0 13px 26px rgba(16, 43, 85, .28);
-  z-index: 28;
-}
-
-.admin-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  padding: 18px;
-  background: rgba(6, 17, 36, .62);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
-  display: grid;
-  place-items: center;
-}
-.admin-modal {
-  width: min(560px, 100%);
-  max-height: min(820px, calc(100dvh - 36px));
-  overflow: auto;
-  border-radius: 25px;
-  background: #fff;
-  padding: 22px;
-  box-shadow: 0 28px 80px rgba(0,0,0,.25);
-}
-.admin-modal-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-.admin-modal-head h2 { margin: 4px 0 0; color: #142847; font-size: 1.35rem; }
-.admin-modal-close {
-  width: 40px;
-  height: 40px;
-  border: 0;
+  margin-bottom: 14px;
+  padding: 9px 11px;
+  border: 1px solid #dfe5ed;
   border-radius: 12px;
-  background: #eff2f6;
-  color: #273b59;
-  font-size: 1.55rem;
-  line-height: 1;
-}
-.android-admin-form { display: grid; gap: 14px; }
-.android-admin-form label { color: #526178; font-weight: 750; font-size: .8rem; }
-.android-admin-form input,
-.android-admin-form select {
-  width: 100%;
-  border: 1.5px solid #dce3eb;
-  border-radius: 14px;
-  background: #fafbfd;
-  color: #17263e;
-  padding: 13px 14px;
-  outline: none;
-}
-.android-admin-form input:focus,
-.android-admin-form select:focus { border-color: #9c8651; box-shadow: 0 0 0 3px rgba(215,179,93,.13); }
-.admin-invite-editor { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-.admin-invite-editor button {
-  border: 0;
-  border-radius: 13px;
-  padding: 0 13px;
-  background: #eaf0f7;
-  color: #24456c;
+  background: white;
+  color: #223d63;
   font-weight: 800;
 }
-.admin-form-hint {
-  margin: -2px 0 0;
-  padding: 11px 12px;
-  border-radius: 13px;
-  background: #f3f6fa;
-  color: #68758a;
-  font-size: .8rem;
-  line-height: 1.4;
-}
-.admin-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
-.admin-modal-actions button { border: 0; border-radius: 14px; padding: 12px 16px; font-weight: 800; }
-.admin-cancel-button { background: #edf1f5; color: #42536b; }
-.admin-save-button { background: var(--navy); color: white; }
-.admin-save-button:disabled { opacity: .55; cursor: wait; }
 
-.presence-modal { width: min(650px, 100%); }
-.presence-event-list { display: grid; gap: 14px; }
-.presence-event-card {
-  border: 1px solid #e3e8ef;
-  border-radius: 18px;
-  overflow: hidden;
-  background: #fff;
+/* Icône mot de passe sobre, sans emoji */
+.auth-eye {
+  font-size: 0;
 }
-.presence-event-head {
-  padding: 14px 15px;
-  background: #f7f9fc;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+.auth-eye svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: rgba(255,255,255,.9);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.presence-event-head h3 { margin: 0; color: #152a49; font-size: 1rem; }
-.presence-event-head p { margin: 4px 0 0; color: #78859a; font-size: .8rem; }
-.presence-event-head > span {
-  flex: 0 0 auto;
-  padding: 5px 8px;
-  border-radius: 999px;
-  background: #e8eef7;
-  color: #315073;
-  font-size: .68rem;
-  font-weight: 800;
-  text-transform: capitalize;
-}
-.presence-responses { padding: 4px 15px; }
-.presence-response-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid #eef1f5;
-}
-.presence-response-row:last-child { border-bottom: 0; }
-.presence-response-row > span { color: #35445b; font-size: .84rem; }
-.presence-response {
-  flex: 0 0 auto;
-  font-size: .72rem;
-  padding: 5px 8px;
-  border-radius: 999px;
-}
-.presence-response.present { background: #e7f5ea; color: #286337; }
-.presence-response.absent { background: #fff0f1; color: #9a303b; }
-.presence-response.maybe { background: #fff5dc; color: #8a6518; }
-.presence-response.none { background: #eef1f5; color: #697589; }
-.presence-empty { color: #758197; text-align: center; padding: 30px 10px; }
-
-@media (max-width: 520px) {
-  .profile-admin-button { padding: 14px; }
-  .presence-overview-button { padding: 14px; }
-  .presence-overview-button small { display: none; }
-  .android-member-card { padding: 13px; }
-  .admin-member-avatar { width: 42px; height: 42px; flex-basis: 42px; border-radius: 13px; }
-  .android-member-actions button { width: 36px; height: 36px; }
-  .admin-modal { padding: 18px; border-radius: 22px; }
-  .admin-modal-actions { display: grid; grid-template-columns: 1fr 1fr; }
-  .admin-two-cols { grid-template-columns: 1fr; }
-  .admin-invite-editor { grid-template-columns: 1fr; }
-  .admin-invite-editor button { min-height: 44px; }
-  .presence-event-head { flex-direction: column; }
-  .presence-response-row { align-items: flex-start; }
-}
-
-.invite-success-modal {
-  width: min(420px, 100%);
-  text-align: center;
-  padding: 28px 24px 24px;
-}
-.invite-success-icon {
-  width: 54px;
-  height: 54px;
-  margin: 0 auto 14px;
-  border-radius: 17px;
-  display: grid;
-  place-items: center;
-  background: #e7f5ea;
-  color: #2e7042;
-  font-size: 1.5rem;
-  font-weight: 900;
-}
-.invite-success-modal h2 { margin: 0; color: #152a49; }
-.invite-success-modal p { color: #6c788b; line-height: 1.45; }
-.invite-success-code {
-  display: block;
-  margin: 18px 0 22px;
-  padding: 16px;
-  border-radius: 16px;
-  background: #f1f4f8;
-  color: #17345f;
-  font-size: 1.45rem;
-  letter-spacing: .12em;
-}
-.invite-success-actions { justify-content: stretch; display: grid; grid-template-columns: 1fr 1fr; }
