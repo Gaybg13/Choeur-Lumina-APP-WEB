@@ -2103,3 +2103,79 @@ input, textarea {
   .voice-preview { flex-wrap: wrap; }
   .voice-preview audio { flex-basis: 100%; }
 }
+
+/* Messagerie V2.3 — continuité, non-lus, emojis et messages épinglés */
+.message-pane-shell {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+.pinned-message-banner {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #e5e8ee;
+  background: #fffdf7;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 14px;
+  text-align: left;
+  color: var(--navy);
+}
+.pinned-message-banner > span { font-size: 1rem; }
+.pinned-message-banner > div { min-width: 0; display: grid; gap: 1px; }
+.pinned-message-banner strong { font-size: .76rem; }
+.pinned-message-banner small { color: #6d7480; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-pin-indicator { position: absolute; left: 7px; bottom: 5px; font-size: .7rem; opacity: .7; }
+.emoji-only-message { font-size: 2.2rem !important; line-height: 1.15; margin: 2px 0 !important; }
+.jump-to-latest {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  z-index: 45;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #dfe4ec;
+  border-radius: 50%;
+  background: white;
+  color: var(--navy);
+  font-size: 1.35rem;
+  box-shadow: 0 8px 24px rgba(19,44,89,.18);
+}
+.jump-to-latest b {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--navy);
+  font-size: .65rem;
+}
+.conversation-person.has-unread { background: #f7f9fd; }
+.conversation-person.has-unread strong,
+.conversation-person.has-unread small { font-weight: 800; color: #182235; }
+.conversation-person small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  line-height: 1.25;
+}
+.sticker-tray-v2 {
+  max-height: 240px;
+  overflow-y: auto;
+  grid-template-columns: repeat(8, minmax(34px, 1fr));
+}
+.sticker-tray-v2 button { font-size: 1.45rem; }
+@media (max-width: 480px) {
+  .sticker-tray-v2 { grid-template-columns: repeat(6, minmax(34px, 1fr)); }
+  .jump-to-latest { right: 10px; bottom: 10px; }
+}

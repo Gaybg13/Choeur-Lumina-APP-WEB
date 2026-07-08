@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   addDoc,
   arrayUnion,
@@ -13,9 +13,13 @@ import {
   setDoc,
   updateDoc,
   writeBatch,
-  where
+  where,
 } from "firebase/firestore";
-import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
+import {
+  getDownloadURL,
+  ref as storageRef,
+  uploadBytes,
+} from "firebase/storage";
 import { db, storage } from "../lib/firebase";
 import { Header } from "../components/Header";
 import type {
@@ -23,11 +27,94 @@ import type {
   DirectMessage,
   GroupMessage,
   Member,
-  UserStatus
+  UserStatus,
 } from "../types/models";
 
-const stickers = ["👏", "❤️", "😂", "🙏", "🎶", "🔥", "😍", "👍", "🙌", "✨", "🎤", "🎵"];
+const emojis = [
+  "😀",
+  "😃",
+  "😄",
+  "😁",
+  "😂",
+  "🤣",
+  "😊",
+  "😍",
+  "🥰",
+  "😘",
+  "😎",
+  "🤩",
+  "🥳",
+  "😇",
+  "🙂",
+  "😉",
+  "😌",
+  "😋",
+  "😜",
+  "🤗",
+  "🤔",
+  "😮",
+  "😢",
+  "😭",
+  "😡",
+  "🤯",
+  "🥺",
+  "👍",
+  "👎",
+  "👏",
+  "🙌",
+  "🙏",
+  "🤝",
+  "💪",
+  "❤️",
+  "💛",
+  "💙",
+  "💜",
+  "🔥",
+  "✨",
+  "🎉",
+  "🎶",
+  "🎵",
+  "🎤",
+  "🎼",
+  "⛪",
+  "📖",
+  "✅",
+  "❌",
+  "💯",
+  "🌟",
+  "🕊️",
+  "🙏🏽",
+  "👏🏽",
+  "👍🏽",
+];
 const reactions = ["❤️", "👍", "👏", "😂", "🙏", "🔥"];
+
+const authorColors = [
+  "#7c3aed",
+  "#0f766e",
+  "#c2410c",
+  "#2563eb",
+  "#be185d",
+  "#15803d",
+  "#9333ea",
+  "#b45309",
+  "#0369a1",
+  "#a21caf",
+];
+
+function colorForAuthor(key: string) {
+  let hash = 0;
+  for (const char of key) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+  return authorColors[Math.abs(hash) % authorColors.length];
+}
+
+function isEmojiOnly(value?: string) {
+  const text = (value || "").trim();
+  if (!text) return false;
+  return /^(?:[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]|\s)+$/u.test(
+    text,
+  );
+}
 
 type ReplyDraft = {
   id: string;
@@ -49,7 +136,11 @@ function previewFor(type?: string, text?: string) {
 }
 
 function formatTime(message: AnyMessage) {
-  return message.timestamp?.toDate().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) || "";
+  return (
+    message.timestamp
+      ?.toDate()
+      .toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) || ""
+  );
 }
 
 function formatLastSeen(status?: UserStatus) {
@@ -66,22 +157,41 @@ function formatLastSeen(status?: UserStatus) {
 export function MessagesScreen({
   uid,
   member,
-  members
+  members,
 }: {
   uid: string;
   member: Member | null;
   members: Member[];
 }) {
-  const [mode, setMode] = useState<"group" | "private">("group");
+  const [mode, setMode] = useState<"group" | "private">(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode") === "private" ||
+      localStorage.getItem("lumina_message_mode") === "private"
+      ? "private"
+      : "group";
+  });
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [directMessages, setDirectMessages] = useState<DirectMessage[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [statuses, setStatuses] = useState<Record<string, UserStatus>>({});
   const [privateTarget, setPrivateTarget] = useState<Member | null>(null);
-  const [groupText, setGroupText] = useState(() => localStorage.getItem("lumina_group_draft") || "");
-  const [directDrafts, setDirectDrafts] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem("lumina_direct_drafts") || "{}"); } catch { return {}; }
-  });
+  const restoredTargetUidRef = useRef(
+    new URLSearchParams(window.location.search).get("targetUid") ||
+      localStorage.getItem("lumina_private_target_uid") ||
+      "",
+  );
+  const [groupText, setGroupText] = useState(
+    () => localStorage.getItem("lumina_group_draft") || "",
+  );
+  const [directDrafts, setDirectDrafts] = useState<Record<string, string>>(
+    () => {
+      try {
+        return JSON.parse(localStorage.getItem("lumina_direct_drafts") || "{}");
+      } catch {
+        return {};
+      }
+    },
+  );
   const [showStickers, setShowStickers] = useState(false);
   const [replyingTo, setReplyingTo] = useState<ReplyDraft | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -92,58 +202,111 @@ export function MessagesScreen({
   const [notice, setNotice] = useState("");
   const [recording, setRecording] = useState(false);
   const [recordingStartedAt, setRecordingStartedAt] = useState(0);
-  const [pendingVoice, setPendingVoice] = useState<{ blob: Blob; url: string; durationMs: number } | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [pendingVoice, setPendingVoice] = useState<{
+    blob: Blob;
+    url: string;
+    durationMs: number;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderStreamRef = useRef<MediaStream | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
 
-  const otherMembers = useMemo(
-    () => members.filter((m) => m.uid && m.uid !== uid && m.claimed !== false).sort((a, b) => `${a.prenom} ${a.nom}`.localeCompare(`${b.prenom} ${b.nom}`, "fr")),
-    [members, uid]
-  );
+  const otherMembers = useMemo(() => {
+    const conversationTimes = new Map(
+      conversations.map((c) => [
+        c.id,
+        c.lastTimestamp?.toDate().getTime() || 0,
+      ]),
+    );
+    return members
+      .filter((m) => m.uid && m.uid !== uid && m.claimed !== false)
+      .sort((a, b) => {
+        const timeDiff =
+          (conversationTimes.get(conversationId(uid, b.uid)) || 0) -
+          (conversationTimes.get(conversationId(uid, a.uid)) || 0);
+        return (
+          timeDiff ||
+          `${a.prenom} ${a.nom}`.localeCompare(`${b.prenom} ${b.nom}`, "fr")
+        );
+      });
+  }, [members, uid, conversations]);
 
   const activeMessages = mode === "group" ? groupMessages : directMessages;
   const visibleMessages = useMemo(
-    () => activeMessages.filter((message) => !(message.hiddenFor || []).includes(uid)),
-    [activeMessages, uid]
+    () =>
+      activeMessages.filter(
+        (message) => !(message.hiddenFor || []).includes(uid),
+      ),
+    [activeMessages, uid],
   );
-  const activeText = mode === "group" ? groupText : (privateTarget ? directDrafts[privateTarget.uid] || "" : "");
+  const activeText =
+    mode === "group"
+      ? groupText
+      : privateTarget
+        ? directDrafts[privateTarget.uid] || ""
+        : "";
 
   useEffect(() => {
     const q = query(collection(db, "groupChat"), orderBy("timestamp", "asc"));
     return onSnapshot(q, (snap) => {
-      setGroupMessages(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<GroupMessage, "id">) })));
+      setGroupMessages(
+        snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<GroupMessage, "id">),
+        })),
+      );
     });
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, "conversations"), where("participants", "array-contains", uid));
+    const q = query(
+      collection(db, "conversations"),
+      where("participants", "array-contains", uid),
+    );
     return onSnapshot(q, (snap) => {
       setConversations(
-        snap.docs
-          .map((d) => ({ id: d.id, ...d.data() } as ConversationSummary))
-          );
+        snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as ConversationSummary,
+        ),
+      );
     });
   }, [uid]);
 
-  useEffect(() => onSnapshot(collection(db, "userStatus"), (snap) => {
-    const next: Record<string, UserStatus> = {};
-    snap.docs.forEach((d) => { next[d.id] = d.data() as UserStatus; });
-    setStatuses(next);
-  }), []);
+  useEffect(
+    () =>
+      onSnapshot(collection(db, "userStatus"), (snap) => {
+        const next: Record<string, UserStatus> = {};
+        snap.docs.forEach((d) => {
+          next[d.id] = d.data() as UserStatus;
+        });
+        setStatuses(next);
+      }),
+    [],
+  );
 
-  useEffect(() => onSnapshot(collection(db, "groupTyping"), (snap) => {
-    const now = Date.now();
-    const names = snap.docs.map((d) => {
-      if (d.id === uid) return null;
-      const data = d.data() as { name?: string; isTyping?: boolean; updatedAt?: { toDate: () => Date } };
-      const updated = data.updatedAt?.toDate().getTime() || 0;
-      return data.isTyping && now - updated < 6000 ? data.name || null : null;
-    }).filter((value): value is string => Boolean(value));
-    setGroupTypers(names);
-  }), [uid]);
+  useEffect(
+    () =>
+      onSnapshot(collection(db, "groupTyping"), (snap) => {
+        const now = Date.now();
+        const names = snap.docs
+          .map((d) => {
+            if (d.id === uid) return null;
+            const data = d.data() as {
+              name?: string;
+              isTyping?: boolean;
+              updatedAt?: { toDate: () => Date };
+            };
+            const updated = data.updatedAt?.toDate().getTime() || 0;
+            return data.isTyping && now - updated < 6000
+              ? data.name || null
+              : null;
+          })
+          .filter((value): value is string => Boolean(value));
+        setGroupTypers(names);
+      }),
+    [uid],
+  );
 
   useEffect(() => {
     if (!privateTarget) {
@@ -153,15 +316,29 @@ export function MessagesScreen({
     }
     const convId = conversationId(uid, privateTarget.uid);
     const unMessages = onSnapshot(
-      query(collection(db, "conversations", convId, "messages"), orderBy("timestamp", "asc")),
-      (snap) => setDirectMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as DirectMessage)))
+      query(
+        collection(db, "conversations", convId, "messages"),
+        orderBy("timestamp", "asc"),
+      ),
+      (snap) =>
+        setDirectMessages(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as DirectMessage),
+        ),
     );
-    const unTyping = onSnapshot(doc(db, "conversations", convId, "typing", privateTarget.uid), (snap) => {
-      const data = snap.data() as { isTyping?: boolean; updatedAt?: { toDate: () => Date } } | undefined;
-      const updated = data?.updatedAt?.toDate().getTime() || 0;
-      setDirectTyping(Boolean(data?.isTyping && Date.now() - updated < 6000));
-    });
-    return () => { unMessages(); unTyping(); };
+    const unTyping = onSnapshot(
+      doc(db, "conversations", convId, "typing", privateTarget.uid),
+      (snap) => {
+        const data = snap.data() as
+          | { isTyping?: boolean; updatedAt?: { toDate: () => Date } }
+          | undefined;
+        const updated = data?.updatedAt?.toDate().getTime() || 0;
+        setDirectTyping(Boolean(data?.isTyping && Date.now() - updated < 6000));
+      },
+    );
+    return () => {
+      unMessages();
+      unTyping();
+    };
   }, [privateTarget, uid]);
 
   useEffect(() => {
@@ -173,19 +350,71 @@ export function MessagesScreen({
   }, [directDrafts]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("notificationAction") !== "mark_read") return;
+    const type = params.get("notificationType");
+    const messageId = params.get("messageId");
+    const convId = params.get("conversationId");
+    if (!messageId) return;
+
+    const perform = async () => {
+      try {
+        if (type === "group_message") {
+          await updateDoc(doc(db, "groupChat", messageId), "readBy", arrayUnion(uid));
+        } else if (type === "direct_message" && convId) {
+          const batch = writeBatch(db);
+          batch.update(doc(db, "conversations", convId, "messages", messageId), "readBy", arrayUnion(uid), "deliveredBy", arrayUnion(uid));
+          batch.update(doc(db, "conversations", convId), `unreadCounts.${uid}`, 0);
+          await batch.commit();
+        }
+      } finally {
+        ["notificationAction", "notificationType", "messageId", "conversationId"].forEach((key) => params.delete(key));
+        const cleanUrl = `${window.location.pathname}?${params.toString()}`.replace(/\?$/, "");
+        window.history.replaceState({}, "", cleanUrl);
+      }
+    };
+    void perform();
+  }, [uid]);
+
+  useEffect(() => {
+    localStorage.setItem("lumina_message_mode", mode);
+  }, [mode]);
+
+  useEffect(() => {
+    if (privateTarget)
+      localStorage.setItem("lumina_private_target_uid", privateTarget.uid);
+  }, [privateTarget]);
+
+  useEffect(() => {
+    if (privateTarget || !restoredTargetUidRef.current) return;
+    const restored = members.find(
+      (candidate) => candidate.uid === restoredTargetUidRef.current,
+    );
+    if (restored) setPrivateTarget(restored);
+  }, [members, privateTarget]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       if (mode === "group") {
-        void setDoc(doc(db, "groupTyping", uid), {
-          name: member?.prenom || "Choriste",
-          isTyping: Boolean(groupText.trim()),
-          updatedAt: serverTimestamp()
-        }, { merge: true }).catch(() => undefined);
+        void setDoc(
+          doc(db, "groupTyping", uid),
+          {
+            name: member?.prenom || "Choriste",
+            isTyping: Boolean(groupText.trim()),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        ).catch(() => undefined);
       } else if (privateTarget) {
         const convId = conversationId(uid, privateTarget.uid);
-        void setDoc(doc(db, "conversations", convId, "typing", uid), {
-          isTyping: Boolean((directDrafts[privateTarget.uid] || "").trim()),
-          updatedAt: serverTimestamp()
-        }, { merge: true }).catch(() => undefined);
+        void setDoc(
+          doc(db, "conversations", convId, "typing", uid),
+          {
+            isTyping: Boolean((directDrafts[privateTarget.uid] || "").trim()),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        ).catch(() => undefined);
       }
     }, 400);
     return () => window.clearTimeout(timer);
@@ -193,35 +422,47 @@ export function MessagesScreen({
 
   useEffect(() => {
     if (mode !== "group") return;
-    const unread = groupMessages.filter((m) => m.authorUid !== uid && !(m.readBy || []).includes(uid));
+    const unread = groupMessages.filter(
+      (m) => m.authorUid !== uid && !(m.readBy || []).includes(uid),
+    );
     if (!unread.length) return;
     const batch = writeBatch(db);
-    unread.forEach((m) => batch.update(doc(db, "groupChat", m.id), "readBy", arrayUnion(uid)));
+    unread.forEach((m) =>
+      batch.update(doc(db, "groupChat", m.id), "readBy", arrayUnion(uid)),
+    );
     void batch.commit().catch(() => undefined);
   }, [groupMessages, mode, uid]);
 
   useEffect(() => {
-    if (mode !== "private" || !privateTarget || directMessages.length === 0) return;
+    if (mode !== "private" || !privateTarget || directMessages.length === 0)
+      return;
     const convId = conversationId(uid, privateTarget.uid);
-    const unread = directMessages.filter((m) => m.authorUid !== uid && !(m.readBy || []).includes(uid));
-    const undelivered = directMessages.filter((m) => m.authorUid !== uid && !(m.deliveredBy || []).includes(uid));
+    const unread = directMessages.filter(
+      (m) => m.authorUid !== uid && !(m.readBy || []).includes(uid),
+    );
+    const undelivered = directMessages.filter(
+      (m) => m.authorUid !== uid && !(m.deliveredBy || []).includes(uid),
+    );
     if (!unread.length && !undelivered.length) return;
     const batch = writeBatch(db);
     new Set([...unread, ...undelivered].map((m) => m.id)).forEach((id) => {
       const ref = doc(db, "conversations", convId, "messages", id);
-      batch.update(ref, "deliveredBy", arrayUnion(uid), "readBy", arrayUnion(uid));
+      batch.update(
+        ref,
+        "deliveredBy",
+        arrayUnion(uid),
+        "readBy",
+        arrayUnion(uid),
+      );
     });
     batch.update(doc(db, "conversations", convId), `unreadCounts.${uid}`, 0);
     void batch.commit().catch(() => undefined);
   }, [directMessages, mode, privateTarget, uid]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [visibleMessages.length, mode, privateTarget?.uid]);
-
   function updateText(value: string) {
     if (mode === "group") setGroupText(value);
-    else if (privateTarget) setDirectDrafts((drafts) => ({ ...drafts, [privateTarget.uid]: value }));
+    else if (privateTarget)
+      setDirectDrafts((drafts) => ({ ...drafts, [privateTarget.uid]: value }));
   }
 
   async function uploadBlob(blob: Blob, path: string) {
@@ -230,7 +471,17 @@ export function MessagesScreen({
     return getDownloadURL(ref);
   }
 
-  async function sendPayload({ type = "text", text = "", mediaUrl = "", durationMs = 0 }: { type?: string; text?: string; mediaUrl?: string; durationMs?: number }) {
+  async function sendPayload({
+    type = "text",
+    text = "",
+    mediaUrl = "",
+    durationMs = 0,
+  }: {
+    type?: string;
+    text?: string;
+    mediaUrl?: string;
+    durationMs?: number;
+  }) {
     const clean = text.trim();
     if (type === "text" && !clean) return;
     const reply = replyingTo;
@@ -239,7 +490,7 @@ export function MessagesScreen({
       if (mode === "group") {
         await addDoc(collection(db, "groupChat"), {
           authorUid: uid,
-          authorName: member?.prenom || "Choriste",
+          authorName: `${member?.prenom || ""} ${member?.nom || ""}`.trim() || "Choriste",
           texte: clean,
           type,
           mediaUrl,
@@ -252,20 +503,24 @@ export function MessagesScreen({
           reactions: {},
           replyToId: reply?.id || "",
           replyToText: reply?.text || "",
-          replyToAuthor: reply?.author || ""
+          replyToAuthor: reply?.author || "",
         });
         if (type === "text") setGroupText("");
       } else if (privateTarget) {
         const convId = conversationId(uid, privateTarget.uid);
         const convRef = doc(db, "conversations", convId);
-        await setDoc(convRef, {
-          participants: [uid, privateTarget.uid].sort(),
-          lastMessage: previewFor(type, clean),
-          lastTimestamp: serverTimestamp()
-        }, { merge: true });
+        await setDoc(
+          convRef,
+          {
+            participants: [uid, privateTarget.uid].sort(),
+            lastMessage: previewFor(type, clean),
+            lastTimestamp: serverTimestamp(),
+          },
+          { merge: true },
+        );
         await updateDoc(convRef, {
           [`unreadCounts.${privateTarget.uid}`]: increment(1),
-          [`unreadCounts.${uid}`]: 0
+          [`unreadCounts.${uid}`]: 0,
         });
         await addDoc(collection(db, "conversations", convId, "messages"), {
           authorUid: uid,
@@ -277,14 +532,17 @@ export function MessagesScreen({
           editedAt: null,
           deleted: false,
           readBy: [uid],
-          deliveredBy: statuses[privateTarget.uid]?.online ? [uid, privateTarget.uid] : [uid],
+          deliveredBy: statuses[privateTarget.uid]?.online
+            ? [uid, privateTarget.uid]
+            : [uid],
           hiddenFor: [],
           reactions: {},
           replyToId: reply?.id || "",
           replyToText: reply?.text || "",
-          replyToAuthor: reply?.author || ""
+          replyToAuthor: reply?.author || "",
         });
-        if (type === "text") setDirectDrafts((drafts) => ({ ...drafts, [privateTarget.uid]: "" }));
+        if (type === "text")
+          setDirectDrafts((drafts) => ({ ...drafts, [privateTarget.uid]: "" }));
       }
       setReplyingTo(null);
       setShowStickers(false);
@@ -299,7 +557,10 @@ export function MessagesScreen({
   async function handleImage(file: File) {
     setBusy("upload-image");
     try {
-      const url = await uploadBlob(file, `chat_images/${uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`);
+      const url = await uploadBlob(
+        file,
+        `chat_images/${uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+      );
       await sendPayload({ type: "image", mediaUrl: url });
     } catch (error) {
       console.error(error);
@@ -309,8 +570,13 @@ export function MessagesScreen({
   }
 
   async function startRecording() {
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setNotice("L'enregistrement audio n'est pas pris en charge par ce navigateur.");
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setNotice(
+        "L'enregistrement audio n'est pas pris en charge par ce navigateur.",
+      );
       return;
     }
     try {
@@ -319,10 +585,14 @@ export function MessagesScreen({
       recorderStreamRef.current = stream;
       recorderRef.current = recorder;
       recorderChunksRef.current = [];
-      recorder.ondataavailable = (event) => { if (event.data.size) recorderChunksRef.current.push(event.data); };
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) recorderChunksRef.current.push(event.data);
+      };
       recorder.onstop = () => {
         const durationMs = Date.now() - recordingStartedAt;
-        const blob = new Blob(recorderChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const blob = new Blob(recorderChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
         const url = URL.createObjectURL(blob);
         recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
         recorderRef.current = null;
@@ -347,13 +617,22 @@ export function MessagesScreen({
     if (!pendingVoice) return;
     setBusy("voice");
     try {
-      const url = await uploadBlob(pendingVoice.blob, `voice_notes/${uid}/${Date.now()}.webm`);
-      await sendPayload({ type: "voice", mediaUrl: url, durationMs: pendingVoice.durationMs });
+      const url = await uploadBlob(
+        pendingVoice.blob,
+        `voice_notes/${uid}/${Date.now()}.webm`,
+      );
+      await sendPayload({
+        type: "voice",
+        mediaUrl: url,
+        durationMs: pendingVoice.durationMs,
+      });
       URL.revokeObjectURL(pendingVoice.url);
       setPendingVoice(null);
     } catch (error) {
       console.error(error);
-      setNotice("Impossible d'envoyer la note vocale. Vérifie les règles Storage.");
+      setNotice(
+        "Impossible d'envoyer la note vocale. Vérifie les règles Storage.",
+      );
       setBusy("");
     }
   }
@@ -361,14 +640,22 @@ export function MessagesScreen({
   function currentMessageRef(messageId: string) {
     if (mode === "group") return doc(db, "groupChat", messageId);
     if (!privateTarget) throw new Error("Aucune conversation sélectionnée");
-    return doc(db, "conversations", conversationId(uid, privateTarget.uid), "messages", messageId);
+    return doc(
+      db,
+      "conversations",
+      conversationId(uid, privateTarget.uid),
+      "messages",
+      messageId,
+    );
   }
 
   async function react(messageId: string, emoji: string) {
     const message = activeMessages.find((m) => m.id === messageId);
     const current = message?.reactions?.[uid];
     try {
-      await updateDoc(currentMessageRef(messageId), { [`reactions.${uid}`]: current === emoji ? deleteField() : emoji });
+      await updateDoc(currentMessageRef(messageId), {
+        [`reactions.${uid}`]: current === emoji ? deleteField() : emoji,
+      });
       setMenuId(null);
     } catch (error) {
       console.error(error);
@@ -380,7 +667,10 @@ export function MessagesScreen({
     const next = window.prompt("Modifier le message", message.texte || "");
     if (next === null || !next.trim()) return;
     try {
-      await updateDoc(currentMessageRef(message.id), { texte: next.trim(), editedAt: serverTimestamp() });
+      await updateDoc(currentMessageRef(message.id), {
+        texte: next.trim(),
+        editedAt: serverTimestamp(),
+      });
       setMenuId(null);
     } catch (error) {
       console.error(error);
@@ -395,7 +685,7 @@ export function MessagesScreen({
         texte: "",
         mediaUrl: "",
         deleted: true,
-        editedAt: serverTimestamp()
+        editedAt: serverTimestamp(),
       });
       setMenuId(null);
     } catch (error) {
@@ -408,7 +698,9 @@ export function MessagesScreen({
     if (!ids.length) return;
     try {
       const batch = writeBatch(db);
-      ids.forEach((id) => batch.update(currentMessageRef(id), "hiddenFor", arrayUnion(uid)));
+      ids.forEach((id) =>
+        batch.update(currentMessageRef(id), "hiddenFor", arrayUnion(uid)),
+      );
       await batch.commit();
       setSelectedIds(new Set());
       setMenuId(null);
@@ -418,18 +710,41 @@ export function MessagesScreen({
     }
   }
 
+  async function togglePin(message: AnyMessage) {
+    try {
+      await updateDoc(currentMessageRef(message.id), {
+        pinned: !message.pinned,
+        pinnedAt: !message.pinned ? serverTimestamp() : null,
+        pinnedBy: !message.pinned ? uid : "",
+      });
+    } catch (error) {
+      console.error(error);
+      setNotice(
+        "Impossible de modifier l’épinglage. Vérifie les règles Firestore.",
+      );
+    }
+  }
+
   function startReply(message: AnyMessage) {
-    const author = message.authorUid === uid ? "Vous" : mode === "group"
-      ? (message as GroupMessage).authorName || "Choriste"
-      : privateTarget?.prenom || "Choriste";
-    setReplyingTo({ id: message.id, author, text: previewFor(message.type, message.texte) });
+    const author =
+      message.authorUid === uid
+        ? "Vous"
+        : mode === "group"
+          ? (message as GroupMessage).authorName || "Choriste"
+          : privateTarget?.prenom || "Choriste";
+    setReplyingTo({
+      id: message.id,
+      author,
+      text: previewFor(message.type, message.texte),
+    });
     setMenuId(null);
   }
 
   function toggleSelected(id: string) {
     setSelectedIds((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
     setMenuId(null);
@@ -442,7 +757,13 @@ export function MessagesScreen({
     setMenuId(null);
   }
 
-  const privateUnreadTotal = conversations.reduce((sum, c) => sum + (c.unreadCounts?.[uid] || 0), 0);
+  const groupUnreadCount = groupMessages.filter(
+    (message) => message.authorUid !== uid && !(message.readBy || []).includes(uid) && !(message.hiddenFor || []).includes(uid)
+  ).length;
+  const privateUnreadTotal = conversations.reduce(
+    (sum, c) => sum + (c.unreadCounts?.[uid] || 0),
+    0,
+  );
 
   function unreadFor(targetUid: string) {
     const convId = conversationId(uid, targetUid);
@@ -459,39 +780,111 @@ export function MessagesScreen({
       <Header title="Messages" />
       <section className="messages-screen messages-v2-screen">
         <div className="message-tabs message-tabs-v2">
-          <button className={mode === "group" ? "active" : ""} onClick={() => { setMode("group"); setReplyingTo(null); setSelectedIds(new Set()); }}>Groupe</button>
-          <button className={mode === "private" ? "active" : ""} onClick={() => { setMode("private"); setReplyingTo(null); setSelectedIds(new Set()); }}>Privé {privateUnreadTotal > 0 && <b>{privateUnreadTotal}</b>}</button>
+          <button
+            className={mode === "group" ? "active" : ""}
+            onClick={() => {
+              setMode("group");
+              setReplyingTo(null);
+              setSelectedIds(new Set());
+            }}
+          >
+            Groupe {groupUnreadCount > 0 && <b>{groupUnreadCount > 99 ? "99+" : groupUnreadCount}</b>}
+          </button>
+          <button
+            className={mode === "private" ? "active" : ""}
+            onClick={() => {
+              setMode("private");
+              setReplyingTo(null);
+              setSelectedIds(new Set());
+            }}
+          >
+            Privé {privateUnreadTotal > 0 && <b>{privateUnreadTotal}</b>}
+          </button>
         </div>
 
         {notice && <p className="notice message-notice">{notice}</p>}
 
         {mode === "private" ? (
           <div className="private-messaging-layout">
-            <aside className={`conversation-sidebar ${privateTarget ? "target-open" : ""}`}>
-              <div className="conversation-sidebar-head"><span className="section-kicker">CHORISTES</span><h2>Messages privés</h2></div>
+            <aside
+              className={`conversation-sidebar ${privateTarget ? "target-open" : ""}`}
+            >
+              <div className="conversation-sidebar-head">
+                <span className="section-kicker">CHORISTES</span>
+                <h2>Messages privés</h2>
+              </div>
               <div className="conversation-search-list">
                 {otherMembers.map((target) => {
                   const unread = unreadFor(target.uid);
                   const summary = conversationPreview(target.uid);
                   return (
-                    <button key={target.id} className={`conversation-person ${privateTarget?.uid === target.uid ? "selected" : ""}`} onClick={() => selectPrivate(target)}>
-                      <div className="message-avatar">{target.photoUrl ? <img src={target.photoUrl} alt="" /> : `${target.prenom?.[0] || ""}${target.nom?.[0] || ""}`}</div>
-                      <div><strong>{target.prenom} {target.nom}</strong><small>{summary?.lastMessage || target.pupitre || "Choriste"}</small></div>
-                      <span className={`online-dot ${statuses[target.uid]?.online ? "online" : ""}`} />
-                      {unread > 0 && <b className="unread-count">{unread}</b>}
+                    <button
+                      key={target.id}
+                      className={`conversation-person ${privateTarget?.uid === target.uid ? "selected" : ""} ${unread > 0 ? "has-unread" : ""}`}
+                      onClick={() => selectPrivate(target)}
+                    >
+                      <div className="message-avatar">
+                        {target.photoUrl ? (
+                          <img
+                            src={target.photoUrl}
+                            alt={`${target.prenom} ${target.nom}`}
+                          />
+                        ) : (
+                          `${target.prenom?.[0] || ""}${target.nom?.[0] || ""}`
+                        )}
+                      </div>
+                      <div>
+                        <strong>
+                          {target.prenom} {target.nom}
+                        </strong>
+                        <small>
+                          {summary?.lastMessage ||
+                            "Aucun message pour le moment"}
+                        </small>
+                      </div>
+                      <span
+                        className={`online-dot ${statuses[target.uid]?.online ? "online" : ""}`}
+                      />
+                      {unread > 0 && (
+                        <b className="unread-count">
+                          {unread > 99 ? "99+" : unread}
+                        </b>
+                      )}
                     </button>
                   );
                 })}
               </div>
             </aside>
 
-            <div className={`private-chat-panel ${privateTarget ? "open" : ""}`}>
+            <div
+              className={`private-chat-panel ${privateTarget ? "open" : ""}`}
+            >
               {privateTarget ? (
                 <>
                   <div className="private-chat-head">
-                    <button className="mobile-back-chat" onClick={() => setPrivateTarget(null)}>‹</button>
-                    <div className="message-avatar">{privateTarget.photoUrl ? <img src={privateTarget.photoUrl} alt="" /> : `${privateTarget.prenom?.[0] || ""}${privateTarget.nom?.[0] || ""}`}</div>
-                    <div><strong>{privateTarget.prenom} {privateTarget.nom}</strong><small>{directTyping ? "écrit…" : formatLastSeen(statuses[privateTarget.uid])}</small></div>
+                    <button
+                      className="mobile-back-chat"
+                      onClick={() => setPrivateTarget(null)}
+                    >
+                      ‹
+                    </button>
+                    <div className="message-avatar">
+                      {privateTarget.photoUrl ? (
+                        <img src={privateTarget.photoUrl} alt="" />
+                      ) : (
+                        `${privateTarget.prenom?.[0] || ""}${privateTarget.nom?.[0] || ""}`
+                      )}
+                    </div>
+                    <div>
+                      <strong>
+                        {privateTarget.prenom} {privateTarget.nom}
+                      </strong>
+                      <small>
+                        {directTyping
+                          ? "écrit…"
+                          : formatLastSeen(statuses[privateTarget.uid])}
+                      </small>
+                    </div>
                   </div>
                   <MessagePane
                     messages={visibleMessages}
@@ -507,8 +900,14 @@ export function MessagesScreen({
                     onDeleteEveryone={deleteForEveryone}
                     onDeleteMe={(message) => hideForMe([message.id])}
                     onSelect={(message) => toggleSelected(message.id)}
+                    onPin={togglePin}
+                    members={members}
                   />
-                  {directTyping && <div className="typing-indicator">{privateTarget.prenom} écrit…</div>}
+                  {directTyping && (
+                    <div className="typing-indicator">
+                      {privateTarget.prenom} écrit…
+                    </div>
+                  )}
                   <Composer
                     text={activeText}
                     onTextChange={updateText}
@@ -520,18 +919,40 @@ export function MessagesScreen({
                     onStartRecording={() => void startRecording()}
                     onStopRecording={stopRecording}
                     onSendVoice={() => void sendPendingVoice()}
-                    onDeleteVoice={() => { if (pendingVoice) URL.revokeObjectURL(pendingVoice.url); setPendingVoice(null); }}
+                    onDeleteVoice={() => {
+                      if (pendingVoice) URL.revokeObjectURL(pendingVoice.url);
+                      setPendingVoice(null);
+                    }}
                     replyingTo={replyingTo}
                     onCancelReply={() => setReplyingTo(null)}
                     busy={Boolean(busy)}
                   />
                 </>
-              ) : <div className="private-empty-state"><div className="private-empty-icon">✉</div><h2>Choisis un choriste</h2><p>Sélectionne un membre du chœur pour commencer ou reprendre une conversation privée.</p></div>}
+              ) : (
+                <div className="private-empty-state">
+                  <div className="private-empty-icon">✉</div>
+                  <h2>Choisis un choriste</h2>
+                  <p>
+                    Sélectionne un membre du chœur pour commencer ou reprendre
+                    une conversation privée.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         ) : (
           <div className="group-chat-shell">
-            <div className="group-chat-head"><div className="group-avatar">♫</div><div><strong>Groupe Chœur Lumina</strong><small>{groupTypers.length ? `${groupTypers.join(", ")} ${groupTypers.length > 1 ? "écrivent" : "écrit"}…` : `${members.filter((m) => Boolean(m.uid)).length} membre(s)`}</small></div></div>
+            <div className="group-chat-head">
+              <div className="group-avatar">♫</div>
+              <div>
+                <strong>Groupe Chœur Lumina</strong>
+                <small>
+                  {groupTypers.length
+                    ? `${groupTypers.join(", ")} ${groupTypers.length > 1 ? "écrivent" : "écrit"}…`
+                    : `${members.filter((m) => Boolean(m.uid)).length} membre(s)`}
+                </small>
+              </div>
+            </div>
             <MessagePane
               messages={visibleMessages}
               uid={uid}
@@ -545,8 +966,15 @@ export function MessagesScreen({
               onDeleteEveryone={deleteForEveryone}
               onDeleteMe={(message) => hideForMe([message.id])}
               onSelect={(message) => toggleSelected(message.id)}
+              onPin={togglePin}
+              members={members}
             />
-            {groupTypers.length > 0 && <div className="typing-indicator">{groupTypers.join(", ")} {groupTypers.length > 1 ? "écrivent" : "écrit"}…</div>}
+            {groupTypers.length > 0 && (
+              <div className="typing-indicator">
+                {groupTypers.join(", ")}{" "}
+                {groupTypers.length > 1 ? "écrivent" : "écrit"}…
+              </div>
+            )}
             <Composer
               text={activeText}
               onTextChange={updateText}
@@ -558,7 +986,10 @@ export function MessagesScreen({
               onStartRecording={() => void startRecording()}
               onStopRecording={stopRecording}
               onSendVoice={() => void sendPendingVoice()}
-              onDeleteVoice={() => { if (pendingVoice) URL.revokeObjectURL(pendingVoice.url); setPendingVoice(null); }}
+              onDeleteVoice={() => {
+                if (pendingVoice) URL.revokeObjectURL(pendingVoice.url);
+                setPendingVoice(null);
+              }}
               replyingTo={replyingTo}
               onCancelReply={() => setReplyingTo(null)}
               busy={Boolean(busy)}
@@ -567,17 +998,45 @@ export function MessagesScreen({
         )}
 
         {selectedIds.size > 0 && (
-          <div className="selection-action-bar"><strong>{selectedIds.size} sélectionné(s)</strong><button onClick={() => void hideForMe([...selectedIds])}>Supprimer pour moi</button><button onClick={() => setSelectedIds(new Set())}>Annuler</button></div>
-        )}
-
-        {showStickers && (
-          <div className="sticker-tray sticker-tray-v2">
-            {stickers.map((sticker) => <button key={sticker} onClick={() => void sendPayload({ type: "sticker", text: sticker })}>{sticker}</button>)}
+          <div className="selection-action-bar">
+            <strong>{selectedIds.size} sélectionné(s)</strong>
+            <button onClick={() => void hideForMe([...selectedIds])}>
+              Supprimer pour moi
+            </button>
+            <button onClick={() => setSelectedIds(new Set())}>Annuler</button>
           </div>
         )}
 
-        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleImage(file); e.currentTarget.value = ""; }} />
-        <div ref={bottomRef} />
+        {showStickers && (
+          <div
+            className="sticker-tray sticker-tray-v2"
+            aria-label="Sélecteur d’émoticônes"
+          >
+            {emojis.map((emoji, index) => (
+              <button
+                key={`${emoji}-${index}`}
+                onClick={() => {
+                  updateText(`${activeText}${emoji}`);
+                  setShowStickers(false);
+                }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleImage(file);
+            e.currentTarget.value = "";
+          }}
+        />
       </section>
     </>
   );
@@ -596,7 +1055,9 @@ function MessagePane({
   onEdit,
   onDeleteEveryone,
   onDeleteMe,
-  onSelect
+  onSelect,
+  onPin,
+  members,
 }: {
   messages: AnyMessage[];
   uid: string;
@@ -611,60 +1072,297 @@ function MessagePane({
   onDeleteEveryone: (message: AnyMessage) => Promise<void>;
   onDeleteMe: (message: AnyMessage) => Promise<void>;
   onSelect: (message: AnyMessage) => void;
+  onPin: (message: AnyMessage) => Promise<void>;
+  members: Member[];
 }) {
-  const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const previousCountRef = useRef(0);
+  const previousIdsRef = useRef<Set<string>>(new Set());
+  const nearBottomRef = useRef(true);
+  const [showJumpButton, setShowJumpButton] = useState(false);
+  const [newMessageCount, setNewMessageCount] = useState(0);
+
+  const memberNames = useMemo(() => {
+    const map = new Map<string, string>();
+    members.forEach((candidate) => {
+      const fullName =
+        `${candidate.prenom || ""} ${candidate.nom || ""}`.trim();
+      if (candidate.uid && fullName) map.set(candidate.uid, fullName);
+    });
+    return map;
+  }, [members]);
+
+  const pinnedMessage = useMemo(() => {
+    return (
+      [...messages]
+        .filter((message) => message.pinned && !message.deleted)
+        .sort(
+          (a, b) =>
+            (b.pinnedAt?.toDate().getTime() || 0) -
+            (a.pinnedAt?.toDate().getTime() || 0),
+        )[0] || null
+    );
+  }, [messages]);
+
+  function scrollToBottom(behavior: ScrollBehavior = "auto") {
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior });
+    nearBottomRef.current = true;
+    setShowJumpButton(false);
+    setNewMessageCount(0);
+  }
+
+  useEffect(() => {
+    previousCountRef.current = 0;
+    previousIdsRef.current = new Set();
+    nearBottomRef.current = true;
+    setNewMessageCount(0);
+    setShowJumpButton(false);
+  }, [mode, otherUid]);
+
+  useLayoutEffect(() => {
+    if (!messages.length) {
+      previousCountRef.current = 0;
+      return;
+    }
+    const previous = previousCountRef.current;
+    const previousIds = previousIdsRef.current;
+    const addedIncoming = messages.filter((message) => !previousIds.has(message.id) && message.authorUid !== uid).length;
+    requestAnimationFrame(() => {
+      if (previous === 0 || nearBottomRef.current) {
+        scrollToBottom("auto");
+      } else if (addedIncoming > 0) {
+        setNewMessageCount((count) => count + addedIncoming);
+        setShowJumpButton(true);
+      }
+    });
+    previousCountRef.current = messages.length;
+    previousIdsRef.current = new Set(messages.map((message) => message.id));
+  }, [messages.length, mode, otherUid]);
+
+  function onScroll() {
+    const list = listRef.current;
+    if (!list) return;
+    const distance = list.scrollHeight - list.scrollTop - list.clientHeight;
+    const nearBottom = distance < 90;
+    nearBottomRef.current = nearBottom;
+    setShowJumpButton(!nearBottom);
+    if (nearBottom) setNewMessageCount(0);
+  }
+
+  function jumpToMessage(messageId: string) {
+    const container = listRef.current;
+    const target = container?.querySelector<HTMLElement>(
+      `[data-message-id="${messageId}"]`,
+    );
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   return (
-    <div className="messages-list messages-list-v2">
-      {messages.length === 0 && <div className="chat-empty">Aucun message pour le moment.</div>}
-      {messages.map((message) => {
-        const mine = message.authorUid === uid;
-        const groupMessage = message as GroupMessage;
-        const directMessage = message as DirectMessage;
-        const groupedReactions = Object.values(message.reactions || {}).reduce<Record<string, number>>((acc, emoji) => {
-          acc[emoji] = (acc[emoji] || 0) + 1;
-          return acc;
-        }, {});
-        const selected = selectedIds.has(message.id);
-        const receipt = mode === "private" && mine && otherUid
-          ? (directMessage.readBy || []).includes(otherUid) ? "Lu"
-            : (directMessage.deliveredBy || []).includes(otherUid) ? "✓✓"
-              : "✓"
-          : "";
-
-        return (
-          <div className={`message-line ${mine ? "mine" : ""} ${selected ? "message-selected" : ""}`} key={message.id}>
-            <div className={`bubble bubble-v2 ${message.type === "system_cancelled" || message.type === "event_cancelled" ? "alert-bubble" : ""}`}>
-              {mode === "group" && !mine && <strong className="message-author">{groupMessage.authorName}</strong>}
-              {message.replyToText && <div className="reply-quote"><strong>{message.replyToAuthor || "Message"}</strong><span>{message.replyToText}</span></div>}
-              {message.deleted ? <p className="deleted-message">Message supprimé</p> : message.type === "sticker" ? (
-                <span className="sticker-message">{message.texte}</span>
-              ) : message.type === "image" ? (
-                <a href={message.mediaUrl} target="_blank" rel="noreferrer"><img className="chat-image" src={message.mediaUrl} alt="Image envoyée" /></a>
-              ) : message.type === "voice" ? (
-                <audio className="voice-note-player" controls preload="metadata" src={message.mediaUrl} />
-              ) : <p>{message.texte}</p>}
-
-              {Object.keys(groupedReactions).length > 0 && <div className="reaction-summary">{Object.entries(groupedReactions).map(([emoji, count]) => <span key={emoji}>{emoji}{count > 1 ? ` ${count}` : ""}</span>)}</div>}
-              <div className="message-meta"><small>{formatTime(message)}{message.editedAt && !message.deleted ? " · modifié" : ""}</small>{receipt && <small className={receipt === "Lu" ? "read-receipt" : ""}>{receipt}</small>}{mode === "group" && mine && <small>{Math.max(0, (message.readBy || []).length - 1)} lu</small>}</div>
-
-              <button className="message-menu-button" onClick={() => setMenuId(menuId === message.id ? null : message.id)}>⋯</button>
-              {menuId === message.id && (
-                <div className={`message-context-menu ${mine ? "mine-menu" : ""}`}>
-                  <div className="reaction-picker">{reactions.map((emoji) => <button key={emoji} onClick={() => void onReact(message.id, emoji)}>{emoji}</button>)}</div>
-                  {!message.deleted && <button onClick={() => onReply(message)}>Répondre</button>}
-                  {mine && message.type === "text" && !message.deleted && <button onClick={() => void onEdit(message)}>Modifier</button>}
-                  {mine && !message.deleted && <button className="danger-text" onClick={() => void onDeleteEveryone(message)}>Supprimer pour tous</button>}
-                  <button onClick={() => void onDeleteMe(message)}>Supprimer pour moi</button>
-                  <button onClick={() => onSelect(message)}>Sélectionner</button>
-                </div>
-              )}
-            </div>
+    <div className="message-pane-shell">
+      {pinnedMessage && (
+        <button
+          className="pinned-message-banner"
+          onClick={() => jumpToMessage(pinnedMessage.id)}
+        >
+          <span>📌</span>
+          <div>
+            <strong>Message épinglé</strong>
+            <small>{previewFor(pinnedMessage.type, pinnedMessage.texte)}</small>
           </div>
-        );
-      })}
-      <div ref={endRef} />
+        </button>
+      )}
+      <div
+        className="messages-list messages-list-v2"
+        ref={listRef}
+        onScroll={onScroll}
+      >
+        {messages.length === 0 && (
+          <div className="chat-empty">Aucun message pour le moment.</div>
+        )}
+        {messages.map((message) => {
+          const mine = message.authorUid === uid;
+          const groupMessage = message as GroupMessage;
+          const directMessage = message as DirectMessage;
+          const groupedReactions = Object.values(
+            message.reactions || {},
+          ).reduce<Record<string, number>>((acc, emoji) => {
+            acc[emoji] = (acc[emoji] || 0) + 1;
+            return acc;
+          }, {});
+          const selected = selectedIds.has(message.id);
+          const receipt =
+            mode === "private" && mine && otherUid
+              ? (directMessage.readBy || []).includes(otherUid)
+                ? "Lu"
+                : (directMessage.deliveredBy || []).includes(otherUid)
+                  ? "✓✓"
+                  : "✓"
+              : "";
+          const resolvedAuthor =
+            memberNames.get(message.authorUid) ||
+            groupMessage.authorName ||
+            "Choriste";
+          const authorColor = colorForAuthor(
+            message.authorUid || resolvedAuthor,
+          );
+          const emojiOnly =
+            message.type !== "voice" &&
+            message.type !== "image" &&
+            isEmojiOnly(message.texte);
+
+          return (
+            <div
+              className={`message-line ${mine ? "mine" : ""} ${selected ? "message-selected" : ""}`}
+              key={message.id}
+              data-message-id={message.id}
+            >
+              <div
+                className={`bubble bubble-v2 ${message.type === "system_cancelled" || message.type === "event_cancelled" ? "alert-bubble" : ""}`}
+              >
+                {mode === "group" && !mine && (
+                  <strong
+                    className="message-author"
+                    style={{ color: authorColor }}
+                  >
+                    {resolvedAuthor}
+                  </strong>
+                )}
+                {message.pinned && (
+                  <span
+                    className="message-pin-indicator"
+                    title="Message épinglé"
+                  >
+                    📌
+                  </span>
+                )}
+                {message.replyToText && (
+                  <div className="reply-quote">
+                    <strong>{message.replyToAuthor || "Message"}</strong>
+                    <span>{message.replyToText}</span>
+                  </div>
+                )}
+                {message.deleted ? (
+                  <p className="deleted-message">Message supprimé</p>
+                ) : message.type === "sticker" ? (
+                  <span className="sticker-message">{message.texte}</span>
+                ) : message.type === "image" ? (
+                  <a href={message.mediaUrl} target="_blank" rel="noreferrer">
+                    <img
+                      className="chat-image"
+                      src={message.mediaUrl}
+                      alt="Image envoyée"
+                    />
+                  </a>
+                ) : message.type === "voice" ? (
+                  <audio
+                    className="voice-note-player"
+                    controls
+                    preload="metadata"
+                    src={message.mediaUrl}
+                  />
+                ) : (
+                  <p className={emojiOnly ? "emoji-only-message" : ""}>
+                    {message.texte}
+                  </p>
+                )}
+
+                {Object.keys(groupedReactions).length > 0 && (
+                  <div className="reaction-summary">
+                    {Object.entries(groupedReactions).map(([emoji, count]) => (
+                      <span key={emoji}>
+                        {emoji}
+                        {count > 1 ? ` ${count}` : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="message-meta">
+                  <small>
+                    {formatTime(message)}
+                    {message.editedAt && !message.deleted ? " · modifié" : ""}
+                  </small>
+                  {receipt && (
+                    <small className={receipt === "Lu" ? "read-receipt" : ""}>
+                      {receipt}
+                    </small>
+                  )}
+                  {mode === "group" && mine && (
+                    <small>
+                      {Math.max(0, (message.readBy || []).length - 1)} lu
+                    </small>
+                  )}
+                </div>
+
+                <button
+                  className="message-menu-button"
+                  onClick={() =>
+                    setMenuId(menuId === message.id ? null : message.id)
+                  }
+                >
+                  ⋯
+                </button>
+                {menuId === message.id && (
+                  <div
+                    className={`message-context-menu ${mine ? "mine-menu" : ""}`}
+                  >
+                    <div className="reaction-picker">
+                      {reactions.map((emoji) => (
+                        <button
+                          key={emoji}
+                          onClick={() => void onReact(message.id, emoji)}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    {!message.deleted && (
+                      <button onClick={() => onReply(message)}>Répondre</button>
+                    )}
+                    {!message.deleted && (
+                      <button onClick={() => void onPin(message)}>
+                        {message.pinned ? "Désépingler" : "Épingler"}
+                      </button>
+                    )}
+                    {mine && message.type === "text" && !message.deleted && (
+                      <button onClick={() => void onEdit(message)}>
+                        Modifier
+                      </button>
+                    )}
+                    {mine && !message.deleted && (
+                      <button
+                        className="danger-text"
+                        onClick={() => void onDeleteEveryone(message)}
+                      >
+                        Supprimer pour tous
+                      </button>
+                    )}
+                    <button onClick={() => void onDeleteMe(message)}>
+                      Supprimer pour moi
+                    </button>
+                    <button onClick={() => onSelect(message)}>
+                      Sélectionner
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {showJumpButton && (
+        <button
+          className="jump-to-latest"
+          onClick={() => scrollToBottom("smooth")}
+          aria-label="Revenir aux derniers messages"
+        >
+          ↓
+          {newMessageCount > 0 && (
+            <b>{newMessageCount > 99 ? "99+" : newMessageCount}</b>
+          )}
+        </button>
+      )}
     </div>
   );
 }
@@ -683,7 +1381,7 @@ function Composer({
   onDeleteVoice,
   replyingTo,
   onCancelReply,
-  busy
+  busy,
 }: {
   text: string;
   onTextChange: (value: string) => void;
@@ -702,17 +1400,43 @@ function Composer({
 }) {
   return (
     <div className="composer-shell">
-      {replyingTo && <div className="composer-reply"><div><strong>{replyingTo.author}</strong><span>{replyingTo.text}</span></div><button onClick={onCancelReply}>×</button></div>}
-      {pendingVoice && <div className="voice-preview"><audio controls src={pendingVoice.url} /><button onClick={onDeleteVoice}>Supprimer</button><button className="send-voice" disabled={busy} onClick={onSendVoice}>Envoyer</button></div>}
-      {recording && <div className="recording-banner"><span className="recording-dot" /> Enregistrement en cours… <button onClick={onStopRecording}>■ Arrêter</button></div>}
+      {replyingTo && (
+        <div className="composer-reply">
+          <div>
+            <strong>{replyingTo.author}</strong>
+            <span>{replyingTo.text}</span>
+          </div>
+          <button onClick={onCancelReply}>×</button>
+        </div>
+      )}
+      {pendingVoice && (
+        <div className="voice-preview">
+          <audio controls src={pendingVoice.url} />
+          <button onClick={onDeleteVoice}>Supprimer</button>
+          <button className="send-voice" disabled={busy} onClick={onSendVoice}>
+            Envoyer
+          </button>
+        </div>
+      )}
+      {recording && (
+        <div className="recording-banner">
+          <span className="recording-dot" /> Enregistrement en cours…{" "}
+          <button onClick={onStopRecording}>■ Arrêter</button>
+        </div>
+      )}
       <div className="composer composer-v2">
-        <button title="Stickers" onClick={onSticker}>☺</button>
-        <button title="Image" onClick={onImage} disabled={recording}>▧</button>
+        <button title="Émoticônes" onClick={onSticker}>
+          ☺
+        </button>
+        <button title="Image" onClick={onImage} disabled={recording}>
+          ▧
+        </button>
         <textarea
           value={text}
           onChange={(e) => onTextChange(e.target.value)}
           placeholder="Écrire un message…"
           rows={1}
+          autoFocus={new URLSearchParams(window.location.search).get("focusComposer") === "1"}
           autoCapitalize="sentences"
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -721,7 +1445,23 @@ function Composer({
             }
           }}
         />
-        {text.trim() ? <button className="send-button" disabled={busy} onClick={onSend}>➤</button> : recording ? <button className="record-button active" onClick={onStopRecording}>■</button> : <button className="record-button" disabled={busy || Boolean(pendingVoice)} onClick={onStartRecording}>●</button>}
+        {text.trim() ? (
+          <button className="send-button" disabled={busy} onClick={onSend}>
+            ➤
+          </button>
+        ) : recording ? (
+          <button className="record-button active" onClick={onStopRecording}>
+            ■
+          </button>
+        ) : (
+          <button
+            className="record-button"
+            disabled={busy || Boolean(pendingVoice)}
+            onClick={onStartRecording}
+          >
+            ●
+          </button>
+        )}
       </div>
     </div>
   );

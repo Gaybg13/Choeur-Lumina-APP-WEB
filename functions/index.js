@@ -103,7 +103,7 @@ exports.onNewGroupMessage = onDocumentCreated("groupChat/{messageId}", async (ev
     data: {
       type: "group_message",
       messageId: event.params.messageId,
-      link: "/?tab=messages",
+      link: "/?tab=messages&mode=group",
     },
   });
 });
@@ -139,7 +139,9 @@ exports.onNewDirectMessage = onDocumentCreated(
           type: "direct_message",
           conversationId: convId,
           messageId: event.params.messageId,
-          link: "/?tab=messages",
+          senderUid: data.authorUid,
+          recipientUid,
+          link: `/?tab=messages&mode=private&targetUid=${encodeURIComponent(data.authorUid)}`,
         },
       });
     },

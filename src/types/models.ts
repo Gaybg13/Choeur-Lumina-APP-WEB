@@ -75,6 +75,9 @@ export type GroupMessage = {
   replyToId?: string;
   replyToText?: string;
   replyToAuthor?: string;
+  pinned?: boolean;
+  pinnedAt?: Timestamp;
+  pinnedBy?: string;
 };
 
 export type DirectMessage = {
@@ -94,6 +97,9 @@ export type DirectMessage = {
   replyToId?: string;
   replyToText?: string;
   replyToAuthor?: string;
+  pinned?: boolean;
+  pinnedAt?: Timestamp;
+  pinnedBy?: string;
 };
 
 export type ConversationSummary = {
