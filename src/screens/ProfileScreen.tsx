@@ -8,10 +8,12 @@ import type { Member } from "../types/models";
 
 export function ProfileScreen({
   member,
-  onRefresh
+  onRefresh,
+  onOpenAdmin
 }: {
   member: Member | null;
   onRefresh: () => Promise<void>;
+  onOpenAdmin: () => void;
 }) {
   const [day, setDay] = useState(String(member?.birthdayDay || ""));
   const [month, setMonth] = useState(String(member?.birthdayMonth || ""));
@@ -70,6 +72,16 @@ export function ProfileScreen({
           <p>Sur iPhone, ajoute d'abord l'application à l'écran d'accueil, puis active les notifications ici.</p>
           <button className="secondary-button" onClick={notifications}>Activer les notifications</button>
         </article>
+
+        {member?.role === "admin" && (
+          <button className="profile-admin-button" type="button" onClick={onOpenAdmin}>
+            <span className="profile-admin-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6Z" /><path d="M9 12h6M12 9v6" /></svg>
+            </span>
+            <span><strong>Administration</strong><small>Gérer les choristes et les présences</small></span>
+            <svg className="profile-admin-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+          </button>
+        )}
 
         {notice && <p className="notice">{notice}</p>}
         <button className="logout-button" onClick={() => signOut(auth)}>Se déconnecter</button>

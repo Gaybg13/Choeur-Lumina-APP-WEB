@@ -117,7 +117,7 @@ export default function App() {
       break;
     case "admin":
       content = member?.role === "admin"
-        ? <AdminScreen members={members} events={events} songs={songs} />
+        ? <AdminScreen members={members} events={events} onBack={() => setTab("profile")} />
         : <HomeScreen member={member} nextEvent={nextEvent} songs={songs} onOpen={setTab} />;
       break;
     case "profile":
@@ -125,6 +125,7 @@ export default function App() {
         <ProfileScreen
           member={member}
           onRefresh={() => loadCurrentMember(user.uid)}
+          onOpenAdmin={() => setTab("admin")}
         />
       );
       break;
@@ -147,7 +148,6 @@ export default function App() {
         onChange={setTab}
         messageUnread={false}
         agendaUnread={false}
-        isAdmin={member?.role === "admin"}
       />
     </div>
   );
