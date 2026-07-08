@@ -103,6 +103,7 @@ export function AgendaScreen({
           programme: [],
           compteRendu: "",
           createdAt: serverTimestamp(),
+          createdBy: uid,
           cancelled: false,
           cancelledAt: null
         });
@@ -123,7 +124,8 @@ export function AgendaScreen({
     try {
       await updateDoc(doc(db, "events", event.id), {
         cancelled: true,
-        cancelledAt: serverTimestamp()
+        cancelledAt: serverTimestamp(),
+        cancelledBy: uid
       });
       const dateLabel = event.date?.toDate().toLocaleDateString("fr-FR") || "";
       await addDoc(collection(db, "groupChat"), {
@@ -143,7 +145,7 @@ export function AgendaScreen({
         replyToText: "",
         replyToAuthor: ""
       });
-      setNotice("Événement annulé et message publié dans le groupe.");
+      setNotice("Événement annulé, notification envoyée et message publié dans le groupe.");
     } catch (error) {
       console.error(error);
       setNotice("Impossible d'annuler l'événement.");

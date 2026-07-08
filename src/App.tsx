@@ -30,6 +30,14 @@ import { MembersScreen } from "./screens/MembersScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { AdminScreen } from "./screens/AdminScreen";
 import { BottomNav, type Tab } from "./components/BottomNav";
+import { clearDisplayedNotifications } from "./lib/notifications";
+
+
+function initialTabFromUrl(): Tab {
+  const requested = new URLSearchParams(window.location.search).get("tab");
+  const allowed: Tab[] = ["home", "songs", "agenda", "messages", "members", "profile", "admin"];
+  return allowed.includes(requested as Tab) ? requested as Tab : "home";
+}
 
 function nextBirthdayEvent(member: Member): LuminaEvent | null {
   const day = member.birthdayDay || 0;
@@ -63,7 +71,7 @@ export default function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [tab, setTab] = useState<Tab>("home");
+  const [tab, setTab] = useState<Tab>(initialTabFromUrl);
 
   async function loadCurrentMember(uid: string) {
     const snap = await getDocs(query(collection(db, "members"), where("uid", "==", uid)));
@@ -84,6 +92,21 @@ export default function App() {
       setConversations([]);
     }
   }), []);
+
+  useEffect(() => {
+    const clearWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void clearDisplayedNotifications();
+      }
+    };
+    clearWhenVisible();
+    document.addEventListener("visibilitychange", clearWhenVisible);
+    window.addEventListener("focus", clearWhenVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", clearWhenVisible);
+      window.removeEventListener("focus", clearWhenVisible);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -176,6 +199,10 @@ export default function App() {
 
   async function openTab(nextTab: Tab) {
     setTab(nextTab);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", nextTab);
+    window.history.replaceState({}, "", url);
+    void clearDisplayedNotifications();
     if (nextTab === "agenda" && member) {
       try {
         await updateDoc(doc(db, "members", member.id), { agendaLastSeenAt: serverTimestamp() });

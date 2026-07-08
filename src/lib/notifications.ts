@@ -11,7 +11,9 @@ export async function enableNotifications(): Promise<string | null> {
   const messaging = await messagingIfSupported();
   if (!messaging) return null;
 
-  const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
+    scope: "/firebase-cloud-messaging-push-scope/"
+  });
   const token = await getToken(messaging, {
     vapidKey,
     serviceWorkerRegistration: registration
@@ -45,4 +47,17 @@ export async function listenForegroundMessages(callback: (title: string, body: s
       payload.notification?.body || "Nouvelle activité"
     );
   });
+}
+
+export async function clearDisplayedNotifications(): Promise<void> {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    const notificationGroups = await Promise.all(
+      registrations.map((registration) => registration.getNotifications())
+    );
+    notificationGroups.flat().forEach((notification) => notification.close());
+  } catch {
+    // Le nettoyage des notifications ne doit jamais bloquer l'application.
+  }
 }

@@ -30,8 +30,10 @@ export type LuminaEvent = {
   programme?: string[];
   compteRendu?: string;
   createdAt?: Timestamp;
+  createdBy?: string;
   cancelled?: boolean;
   cancelledAt?: Timestamp;
+  cancelledBy?: string;
   synthetic?: boolean;
 };
 
