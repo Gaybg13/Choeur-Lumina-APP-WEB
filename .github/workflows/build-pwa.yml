@@ -18,14 +18,39 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Trouver le dossier du projet PWA
+        id: project
+        shell: bash
+        run: |
+          set -e
+
+          if [ -f "package.json" ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PROJECT_DIR=$(find . -maxdepth 3 -name package.json -not -path "*/node_modules/*" -print -quit | xargs -r dirname)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Aucun package.json trouvé dans le dépôt."
+            echo "Contenu du dépôt :"
+            find . -maxdepth 3 -type f | sort
+            exit 1
+          fi
+
+          echo "Projet trouvé dans : $PROJECT_DIR"
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
       - name: Installer les dépendances
+        working-directory: ${{ steps.project.outputs.dir }}
         run: npm install
 
       - name: Construire la PWA
+        working-directory: ${{ steps.project.outputs.dir }}
         run: npm run build
 
       - name: Publier le build comme artefact
         uses: actions/upload-artifact@v4
         with:
           name: choeur-lumina-pwa
-          path: dist/
+          path: ${{ steps.project.outputs.dir }}/dist/
