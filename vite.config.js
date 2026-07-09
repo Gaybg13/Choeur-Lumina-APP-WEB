@@ -6,8 +6,19 @@ export default defineConfig({
         react(),
         VitePWA({
             registerType: "autoUpdate",
-            injectRegister: "auto",
+            injectRegister: false,
             includeAssets: ["icons/icon-192.png", "icons/icon-512.png"],
+            workbox: {
+                cleanupOutdatedCaches: true,
+                clientsClaim: true,
+                skipWaiting: true,
+                importScripts: ["/sw-update.js"],
+                globIgnores: [
+                    "**/firebase-config.js",
+                    "**/firebase-messaging-sw.js",
+                    "**/sw-update.js"
+                ]
+            },
             manifest: {
                 name: "Chœur Lumina",
                 short_name: "Lumina",
