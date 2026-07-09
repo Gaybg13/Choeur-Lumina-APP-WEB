@@ -2194,9 +2194,16 @@ input, textarea {
 .home-welcome-compact .brand-inline h1 {
   font-size: clamp(1.35rem, 4.8vw, 1.7rem);
 }
-.home-pupitre-chip {
+.home-pupitre-subline {
+  display: block;
+  margin-top: 3px;
+  color: #7a6a42;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+.home-welcome-wave {
   flex: 0 0 auto;
-  padding: 6px 10px;
+  align-self: center;
 }
 .choir-photo-hero {
   position: relative;

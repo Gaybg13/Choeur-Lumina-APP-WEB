@@ -27,21 +27,25 @@ export function HomeScreen({
   songs: Song[];
   onOpen: (tab: "songs" | "agenda" | "messages") => void;
 }) {
+  const heroImageSrc = new URL("choeur-lumina-groupe-hero.jpg", document.baseURI).toString();
+  const logoSrc = new URL("icons/icon-192.png", document.baseURI).toString();
+
   return (
     <section className="screen home-screen home-screen-v24">
       <div className="welcome-row home-welcome-compact">
         <div className="brand-inline">
-          <img src="/icons/icon-192.png" alt="Logo" />
+          <img src={logoSrc} alt="Logo" />
           <div>
             <span>Chœur Lumina</span>
             <h1>Bonjour {member?.prenom || "à toi"}</h1>
+            {member?.pupitre && <small className="home-pupitre-subline">{member.pupitre}</small>}
           </div>
         </div>
-        {member?.pupitre && <span className="gold-chip home-pupitre-chip">{member.pupitre}</span>}
+        <span className="wave home-welcome-wave" aria-hidden="true">👋</span>
       </div>
 
       <div className="choir-photo-hero">
-        <img src="/choeur-lumina-groupe-hero.jpg" alt="Photo du Chœur Lumina" />
+        <img src={heroImageSrc} alt="Photo du Chœur Lumina" />
         <div className="choir-photo-overlay">
           <span>CHŒUR LUMINA</span>
           <strong>Ensemble, une même voix.</strong>
