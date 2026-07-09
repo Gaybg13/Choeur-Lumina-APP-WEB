@@ -212,37 +212,19 @@ export function MessagesScreen({
   const recorderStreamRef = useRef<MediaStream | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
 
-  function conversationSummaryFor(targetUid: string) {
-    return (
-      conversations.find((conversation) => {
-        const participants = conversation.participants || [];
-        return participants.includes(uid) && participants.includes(targetUid);
-      }) ||
-      conversations.find(
-        (conversation) => conversation.id === conversationId(uid, targetUid),
-      )
-    );
-  }
-
-  function resolvedConversationIdFor(targetUid: string) {
-    return conversationSummaryFor(targetUid)?.id || conversationId(uid, targetUid);
-  }
-
-  const activeConversationId = useMemo(
-    () =>
-      privateTarget
-        ? resolvedConversationIdFor(privateTarget.uid)
-        : "",
-    [conversations, privateTarget?.uid, uid],
-  );
-
   const otherMembers = useMemo(() => {
+    const conversationTimes = new Map(
+      conversations.map((c) => [
+        c.id,
+        c.lastTimestamp?.toDate().getTime() || 0,
+      ]),
+    );
     return members
       .filter((m) => m.uid && m.uid !== uid && m.claimed !== false)
       .sort((a, b) => {
         const timeDiff =
-          (conversationSummaryFor(b.uid)?.lastTimestamp?.toDate().getTime() || 0) -
-          (conversationSummaryFor(a.uid)?.lastTimestamp?.toDate().getTime() || 0);
+          (conversationTimes.get(conversationId(uid, b.uid)) || 0) -
+          (conversationTimes.get(conversationId(uid, a.uid)) || 0);
         return (
           timeDiff ||
           `${a.prenom} ${a.nom}`.localeCompare(`${b.prenom} ${b.nom}`, "fr")
@@ -327,22 +309,29 @@ export function MessagesScreen({
   );
 
   useEffect(() => {
-    if (!privateTarget) {
-      setDirectMessages([]);
-      setDirectTyping(false);
-      return;
-    }
-    const convId = activeConversationId;
-    if (!convId) return;
+    // Important : vider immédiatement l'ancien fil avant de brancher le nouveau listener.
+    // Ainsi, une conversation vide ou une erreur Firestore ne peut jamais afficher
+    // les messages du correspondant précédent.
+    setDirectMessages([]);
+    setDirectTyping(false);
+
+    if (!privateTarget) return;
+
+    const convId = conversationId(uid, privateTarget.uid);
     const unMessages = onSnapshot(
       query(
         collection(db, "conversations", convId, "messages"),
         orderBy("timestamp", "asc"),
       ),
-      (snap) =>
+      (snap) => {
         setDirectMessages(
           snap.docs.map((d) => ({ id: d.id, ...d.data() }) as DirectMessage),
-        ),
+        );
+      },
+      (error) => {
+        console.error("Écoute conversation privée impossible", convId, error);
+        setDirectMessages([]);
+      },
     );
     const unTyping = onSnapshot(
       doc(db, "conversations", convId, "typing", privateTarget.uid),
@@ -353,12 +342,13 @@ export function MessagesScreen({
         const updated = data?.updatedAt?.toDate().getTime() || 0;
         setDirectTyping(Boolean(data?.isTyping && Date.now() - updated < 6000));
       },
+      () => setDirectTyping(false),
     );
     return () => {
       unMessages();
       unTyping();
     };
-  }, [privateTarget, uid, activeConversationId]);
+  }, [privateTarget?.uid, uid]);
 
   useEffect(() => {
     localStorage.setItem("lumina_group_draft", groupText);
@@ -405,15 +395,16 @@ export function MessagesScreen({
   }, [privateTarget]);
 
   useEffect(() => {
-    if (!restoredTargetUidRef.current) return;
+    if (privateTarget || !restoredTargetUidRef.current) return;
     const restored = members.find(
       (candidate) => candidate.uid === restoredTargetUidRef.current,
     );
-    if (restored && !privateTarget) setPrivateTarget(restored);
+    if (restored) setPrivateTarget(restored);
   }, [members, privateTarget]);
 
-  // Garde la conversation active synchronisée avec le flux temps réel des membres :
-  // nouvelle photo, changement de nom ou de profil visibles sans fermer la PWA.
+  // Synchronise uniquement l'identité/photo du correspondant actif.
+  // La conversation elle-même reste liée à l'identifiant canonique uid1_uid2,
+  // comme dans la version stable V2.5.
   useEffect(() => {
     const activeUid = privateTarget?.uid;
     if (!activeUid) return;
@@ -443,7 +434,7 @@ export function MessagesScreen({
           { merge: true },
         ).catch(() => undefined);
       } else if (privateTarget) {
-        const convId = activeConversationId || resolvedConversationIdFor(privateTarget.uid);
+        const convId = conversationId(uid, privateTarget.uid);
         void setDoc(
           doc(db, "conversations", convId, "typing", uid),
           {
@@ -455,7 +446,7 @@ export function MessagesScreen({
       }
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [mode, groupText, directDrafts, privateTarget, uid, member?.prenom, activeConversationId, conversations]);
+  }, [mode, groupText, directDrafts, privateTarget, uid, member?.prenom]);
 
   useEffect(() => {
     if (mode !== "group") return;
@@ -473,7 +464,7 @@ export function MessagesScreen({
   useEffect(() => {
     if (mode !== "private" || !privateTarget || directMessages.length === 0)
       return;
-    const convId = activeConversationId || resolvedConversationIdFor(privateTarget.uid);
+    const convId = conversationId(uid, privateTarget.uid);
     const unread = directMessages.filter(
       (m) => m.authorUid !== uid && !(m.readBy || []).includes(uid),
     );
@@ -494,7 +485,7 @@ export function MessagesScreen({
     });
     batch.update(doc(db, "conversations", convId), `unreadCounts.${uid}`, 0);
     void batch.commit().catch(() => undefined);
-  }, [directMessages, mode, privateTarget, uid, activeConversationId, conversations]);
+  }, [directMessages, mode, privateTarget, uid]);
 
   function updateText(value: string) {
     if (mode === "group") setGroupText(value);
@@ -555,7 +546,7 @@ export function MessagesScreen({
         });
         if (type === "text") setGroupText("");
       } else if (privateTarget) {
-        const convId = resolvedConversationIdFor(privateTarget.uid);
+        const convId = conversationId(uid, privateTarget.uid);
         const convRef = doc(db, "conversations", convId);
         await setDoc(
           convRef,
@@ -691,7 +682,7 @@ export function MessagesScreen({
     return doc(
       db,
       "conversations",
-      activeConversationId || resolvedConversationIdFor(privateTarget.uid),
+      conversationId(uid, privateTarget.uid),
       "messages",
       messageId,
     );
@@ -814,11 +805,13 @@ export function MessagesScreen({
   );
 
   function unreadFor(targetUid: string) {
-    return conversationSummaryFor(targetUid)?.unreadCounts?.[uid] || 0;
+    const convId = conversationId(uid, targetUid);
+    return conversations.find((c) => c.id === convId)?.unreadCounts?.[uid] || 0;
   }
 
   function conversationPreview(targetUid: string) {
-    return conversationSummaryFor(targetUid);
+    const convId = conversationId(uid, targetUid);
+    return conversations.find((c) => c.id === convId);
   }
 
   return (
