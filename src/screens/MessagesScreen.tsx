@@ -212,19 +212,37 @@ export function MessagesScreen({
   const recorderStreamRef = useRef<MediaStream | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
 
-  const otherMembers = useMemo(() => {
-    const conversationTimes = new Map(
-      conversations.map((c) => [
-        c.id,
-        c.lastTimestamp?.toDate().getTime() || 0,
-      ]),
+  function conversationSummaryFor(targetUid: string) {
+    return (
+      conversations.find((conversation) => {
+        const participants = conversation.participants || [];
+        return participants.includes(uid) && participants.includes(targetUid);
+      }) ||
+      conversations.find(
+        (conversation) => conversation.id === conversationId(uid, targetUid),
+      )
     );
+  }
+
+  function resolvedConversationIdFor(targetUid: string) {
+    return conversationSummaryFor(targetUid)?.id || conversationId(uid, targetUid);
+  }
+
+  const activeConversationId = useMemo(
+    () =>
+      privateTarget
+        ? resolvedConversationIdFor(privateTarget.uid)
+        : "",
+    [conversations, privateTarget?.uid, uid],
+  );
+
+  const otherMembers = useMemo(() => {
     return members
       .filter((m) => m.uid && m.uid !== uid && m.claimed !== false)
       .sort((a, b) => {
         const timeDiff =
-          (conversationTimes.get(conversationId(uid, b.uid)) || 0) -
-          (conversationTimes.get(conversationId(uid, a.uid)) || 0);
+          (conversationSummaryFor(b.uid)?.lastTimestamp?.toDate().getTime() || 0) -
+          (conversationSummaryFor(a.uid)?.lastTimestamp?.toDate().getTime() || 0);
         return (
           timeDiff ||
           `${a.prenom} ${a.nom}`.localeCompare(`${b.prenom} ${b.nom}`, "fr")
@@ -314,7 +332,8 @@ export function MessagesScreen({
       setDirectTyping(false);
       return;
     }
-    const convId = conversationId(uid, privateTarget.uid);
+    const convId = activeConversationId;
+    if (!convId) return;
     const unMessages = onSnapshot(
       query(
         collection(db, "conversations", convId, "messages"),
@@ -339,7 +358,7 @@ export function MessagesScreen({
       unMessages();
       unTyping();
     };
-  }, [privateTarget, uid]);
+  }, [privateTarget, uid, activeConversationId]);
 
   useEffect(() => {
     localStorage.setItem("lumina_group_draft", groupText);
@@ -424,7 +443,7 @@ export function MessagesScreen({
           { merge: true },
         ).catch(() => undefined);
       } else if (privateTarget) {
-        const convId = conversationId(uid, privateTarget.uid);
+        const convId = activeConversationId || resolvedConversationIdFor(privateTarget.uid);
         void setDoc(
           doc(db, "conversations", convId, "typing", uid),
           {
@@ -436,7 +455,7 @@ export function MessagesScreen({
       }
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [mode, groupText, directDrafts, privateTarget, uid, member?.prenom]);
+  }, [mode, groupText, directDrafts, privateTarget, uid, member?.prenom, activeConversationId, conversations]);
 
   useEffect(() => {
     if (mode !== "group") return;
@@ -454,7 +473,7 @@ export function MessagesScreen({
   useEffect(() => {
     if (mode !== "private" || !privateTarget || directMessages.length === 0)
       return;
-    const convId = conversationId(uid, privateTarget.uid);
+    const convId = activeConversationId || resolvedConversationIdFor(privateTarget.uid);
     const unread = directMessages.filter(
       (m) => m.authorUid !== uid && !(m.readBy || []).includes(uid),
     );
@@ -475,7 +494,7 @@ export function MessagesScreen({
     });
     batch.update(doc(db, "conversations", convId), `unreadCounts.${uid}`, 0);
     void batch.commit().catch(() => undefined);
-  }, [directMessages, mode, privateTarget, uid]);
+  }, [directMessages, mode, privateTarget, uid, activeConversationId, conversations]);
 
   function updateText(value: string) {
     if (mode === "group") setGroupText(value);
@@ -536,7 +555,7 @@ export function MessagesScreen({
         });
         if (type === "text") setGroupText("");
       } else if (privateTarget) {
-        const convId = conversationId(uid, privateTarget.uid);
+        const convId = resolvedConversationIdFor(privateTarget.uid);
         const convRef = doc(db, "conversations", convId);
         await setDoc(
           convRef,
@@ -672,7 +691,7 @@ export function MessagesScreen({
     return doc(
       db,
       "conversations",
-      conversationId(uid, privateTarget.uid),
+      activeConversationId || resolvedConversationIdFor(privateTarget.uid),
       "messages",
       messageId,
     );
@@ -795,13 +814,11 @@ export function MessagesScreen({
   );
 
   function unreadFor(targetUid: string) {
-    const convId = conversationId(uid, targetUid);
-    return conversations.find((c) => c.id === convId)?.unreadCounts?.[uid] || 0;
+    return conversationSummaryFor(targetUid)?.unreadCounts?.[uid] || 0;
   }
 
   function conversationPreview(targetUid: string) {
-    const convId = conversationId(uid, targetUid);
-    return conversations.find((c) => c.id === convId);
+    return conversationSummaryFor(targetUid);
   }
 
   return (
