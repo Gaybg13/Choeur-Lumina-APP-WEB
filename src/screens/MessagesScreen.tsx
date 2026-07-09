@@ -465,6 +465,17 @@ export function MessagesScreen({
       setDirectDrafts((drafts) => ({ ...drafts, [privateTarget.uid]: value }));
   }
 
+  function appendEmoji(emoji: string) {
+    if (mode === "group") {
+      setGroupText((current) => current + emoji);
+    } else if (privateTarget) {
+      setDirectDrafts((drafts) => ({
+        ...drafts,
+        [privateTarget.uid]: (drafts[privateTarget.uid] || "") + emoji,
+      }));
+    }
+  }
+
   async function uploadBlob(blob: Blob, path: string) {
     const ref = storageRef(storage, path);
     await uploadBytes(ref, blob);
@@ -1012,12 +1023,15 @@ export function MessagesScreen({
             className="sticker-tray sticker-tray-v2"
             aria-label="Sélecteur d’émoticônes"
           >
+            <div className="emoji-tray-header">
+              <span>Ajoute plusieurs émoticônes</span>
+              <button type="button" onClick={() => setShowStickers(false)} aria-label="Fermer">×</button>
+            </div>
             {emojis.map((emoji, index) => (
               <button
                 key={`${emoji}-${index}`}
                 onClick={() => {
-                  updateText(`${activeText}${emoji}`);
-                  setShowStickers(false);
+                  appendEmoji(emoji);
                 }}
               >
                 {emoji}
