@@ -1,6 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type MemberRole = "membre" | "contributeur" | "admin" | string;
+export type MemberRole = "membre" | "contributeur" | "admin" | "super_admin" | string;
 
 export type Member = {
   id: string;
@@ -19,6 +19,28 @@ export type Member = {
   agendaLastSeenAt?: Timestamp;
 };
 
+export type SongCategory = {
+  id: string;
+  nom: string;
+  ordre: number;
+  custom: boolean;
+  createdAt?: Timestamp;
+  createdBy?: string;
+};
+
+export type Announcement = {
+  id: string;
+  text: string;
+  createdAt?: Timestamp;
+  authorUid?: string;
+};
+
+export type AnonymousSuggestion = {
+  id: string;
+  text: string;
+  createdAt?: Timestamp;
+};
+
 export type LuminaEvent = {
   id: string;
   titre: string;
@@ -26,8 +48,12 @@ export type LuminaEvent = {
   date?: Timestamp;
   lieu?: string;
   description?: string;
+  dressCode?: string;
   reponses?: Record<string, string>;
   programme?: string[];
+  programmeParCategorie?: Record<string, string[]>;
+  programmeCategories?: string[];
+  programmeFolderId?: string;
   compteRendu?: string;
   createdAt?: Timestamp;
   createdBy?: string;
@@ -40,6 +66,12 @@ export type LuminaEvent = {
 export type Folder = {
   id: string;
   nom: string;
+  temporary?: boolean;
+  eventId?: string;
+  expiresAt?: Timestamp;
+  songIds?: string[];
+  categoryIds?: string[];
+  createdAt?: Timestamp;
 };
 
 export type Song = {
@@ -52,6 +84,7 @@ export type Song = {
   audioIsFile?: boolean;
   youtubeUrl?: string;
   folderId?: string;
+  categoryIds?: string[];
   appris?: boolean;
   createdAt?: Timestamp;
   audioUrlsByPupitre?: Record<string, string>;

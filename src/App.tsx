@@ -16,12 +16,15 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
 import type {
+  Announcement,
+  AnonymousSuggestion,
   ConversationSummary,
   Folder,
   GroupMessage,
   LuminaEvent,
   Member,
-  Song
+  Song,
+  SongCategory
 } from "./types/models";
 import { LoginScreen } from "./screens/LoginScreen";
 import { HomeScreen } from "./screens/HomeScreen";
@@ -33,6 +36,7 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { AdminScreen } from "./screens/AdminScreen";
 import { BottomNav, type Tab } from "./components/BottomNav";
 import { clearDisplayedNotifications } from "./lib/notifications";
+import { mergeSongCategories } from "./lib/songCategories";
 
 
 function initialTabFromUrl(): Tab {
@@ -114,6 +118,9 @@ export default function App() {
   const [events, setEvents] = useState<LuminaEvent[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [customCategories, setCustomCategories] = useState<SongCategory[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [suggestions, setSuggestions] = useState<AnonymousSuggestion[]>([]);
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [tab, setTab] = useState<Tab>(initialTabFromUrl);
@@ -134,6 +141,9 @@ export default function App() {
       setEvents([]);
       setSongs([]);
       setFolders([]);
+      setCustomCategories([]);
+      setAnnouncements([]);
+      setSuggestions([]);
       setGroupMessages([]);
       setConversations([]);
     }
@@ -154,6 +164,24 @@ export default function App() {
     };
   }, []);
 
+
+  useEffect(() => {
+    if (!user) return;
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get("notificationAction") || "";
+    const eventId = params.get("eventId") || "";
+    const presence = action.startsWith("presence_") ? action.replace("presence_", "") : "";
+    if (!eventId || !["present", "peut-etre", "absent"].includes(presence)) return;
+
+    void updateDoc(doc(db, "events", eventId), { [`reponses.${user.uid}`]: presence })
+      .catch(() => undefined)
+      .finally(() => {
+        params.delete("notificationAction");
+        params.delete("eventId");
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+        window.history.replaceState({}, "", next);
+      });
+  }, [user]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -210,8 +238,21 @@ export default function App() {
       setFolders(
         snap.docs
           .map((d) => ({ id: d.id, ...d.data() } as Folder))
+          .filter((folder) => !folder.expiresAt || folder.expiresAt.toDate().getTime() >= startOfTodayInParis().getTime())
           .sort((a, b) => a.nom.localeCompare(b.nom, "fr"))
       );
+    });
+
+    const unCategories = onSnapshot(collection(db, "songCategories"), (snap) => {
+      setCustomCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SongCategory)));
+    });
+
+    const unAnnouncements = onSnapshot(query(collection(db, "announcements"), orderBy("createdAt", "desc")), (snap) => {
+      setAnnouncements(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Announcement)));
+    });
+
+    const unSuggestions = onSnapshot(query(collection(db, "anonymousSuggestions"), orderBy("createdAt", "desc")), (snap) => {
+      setSuggestions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AnonymousSuggestion)));
     });
 
     const unGroup = onSnapshot(query(collection(db, "groupChat"), orderBy("timestamp", "asc")), (snap) => {
@@ -228,6 +269,9 @@ export default function App() {
       unEvents();
       unSongs();
       unFolders();
+      unCategories();
+      unAnnouncements();
+      unSuggestions();
       unGroup();
       unConversations();
     };
@@ -238,7 +282,7 @@ export default function App() {
   // ce qui supprime en même temps leur map `reponses`.
   useEffect(() => {
     const role = member?.role;
-    if (!user || (role !== "admin" && role !== "contributeur")) return;
+    if (!user || (role !== "admin" && role !== "super_admin" && role !== "contributeur")) return;
 
     const cutoff = Timestamp.fromDate(startOfTodayInParis());
     void getDocs(query(collection(db, "events"), where("date", "<", cutoff)))
@@ -264,7 +308,9 @@ export default function App() {
   }, [activeEvents, members]);
 
   const nextEvent = allEvents.find((e) => (e.date?.toDate().getTime() || 0) >= Date.now()) || null;
-  const canEditContent = member?.role === "admin" || member?.role === "contributeur";
+  const categories = useMemo(() => mergeSongCategories(customCategories), [customCategories]);
+  const canEditContent = member?.role === "super_admin" || member?.role === "admin" || member?.role === "contributeur";
+  const canAdmin = member?.role === "super_admin" || member?.role === "admin";
 
   const messageUnread = Boolean(user && (
     groupMessages.some((message) =>
@@ -302,6 +348,7 @@ export default function App() {
         <SongsScreen
           songs={songs}
           folders={folders}
+          categories={categories}
           canEdit={canEditContent}
           uid={user.uid}
         />
@@ -313,20 +360,21 @@ export default function App() {
           events={allEvents}
           uid={user.uid}
           songs={songs}
+          categories={categories}
           canEdit={canEditContent}
         />
       );
       break;
     case "messages":
-      content = <MessagesScreen uid={user.uid} member={member} members={members} />;
+      content = <MessagesScreen uid={user.uid} member={member} members={members} announcements={announcements} />;
       break;
     case "members":
       content = <MembersScreen members={members} />;
       break;
     case "admin":
-      content = member?.role === "admin"
-        ? <AdminScreen members={members} events={activeEvents} onBack={() => void openTab("profile")} />
-        : <HomeScreen member={member} nextEvent={nextEvent} songs={songs} onOpen={(value) => void openTab(value)} />;
+      content = canAdmin
+        ? <AdminScreen currentMember={member} members={members} events={activeEvents} onBack={() => void openTab("profile")} />
+        : <HomeScreen member={member} nextEvent={nextEvent} songs={songs} announcements={announcements} suggestions={suggestions} onOpen={(value) => void openTab(value)} />;
       break;
     case "profile":
       content = (
@@ -343,6 +391,8 @@ export default function App() {
           member={member}
           nextEvent={nextEvent}
           songs={songs}
+          announcements={announcements}
+          suggestions={suggestions}
           onOpen={(value) => void openTab(value)}
         />
       );

@@ -6,6 +6,7 @@ const {getMessaging} = require("firebase-admin/messaging");
 
 initializeApp();
 
+
 function eventTypeMeta(type) {
   const types = {
     repetition: {label: "répétition", article: "une", title: "Nouvelle répétition", definite: "La répétition", scheduled: "prévue", cancelled: "annulée"},
@@ -103,6 +104,7 @@ exports.onNewGroupMessage = onDocumentCreated("groupChat/{messageId}", async (ev
     data: {
       type: "group_message",
       messageId: event.params.messageId,
+      senderUid: data.authorUid || "",
       link: "/?tab=messages&mode=group",
     },
   });
@@ -121,7 +123,7 @@ exports.onNewDirectMessage = onDocumentCreated(
 
       const participants = convDoc.data().participants || [];
       const recipientUid = participants.find((uid) => uid !== data.authorUid);
-      if (!recipientUid) return;
+      if (!recipientUid || recipientUid === data.authorUid) return;
 
       const authorSnap = await db.collection("members")
           .where("uid", "==", data.authorUid)
@@ -252,12 +254,41 @@ exports.cleanupExpiredEvents = onSchedule({
     if (snapshot.empty) break;
 
     const batch = db.batch();
-    snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+    snapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      batch.delete(db.collection("folders").doc(`event_${doc.id}`));
+    });
     await batch.commit();
     deleted += snapshot.size;
 
     if (snapshot.size < 450) break;
   }
 
-  console.log(`Nettoyage agenda terminé : ${deleted} événement(s) supprimé(s).`);
+  let deletedFolders = 0;
+  while (true) {
+    const foldersSnapshot = await db.collection("folders")
+        .where("expiresAt", "<", cutoff)
+        .limit(450)
+        .get();
+
+    if (foldersSnapshot.empty) break;
+
+    const expiredTemporaryFolders = foldersSnapshot.docs
+        .filter((doc) => doc.data().temporary === true);
+    if (expiredTemporaryFolders.length) {
+      const folderBatch = db.batch();
+      expiredTemporaryFolders.forEach((doc) => folderBatch.delete(doc.ref));
+      await folderBatch.commit();
+      deletedFolders += expiredTemporaryFolders.length;
+    }
+
+    if (foldersSnapshot.size < 450) break;
+    // Les dossiers permanents n'ont normalement pas de champ expiresAt.
+    // Si des documents non temporaires en possèdent un, on évite une boucle infinie.
+    if (!expiredTemporaryFolders.length) break;
+  }
+
+  console.log(
+      `Nettoyage agenda terminé : ${deleted} événement(s) et ${deletedFolders} dossier(s) temporaire(s) supprimé(s).`,
+  );
 });

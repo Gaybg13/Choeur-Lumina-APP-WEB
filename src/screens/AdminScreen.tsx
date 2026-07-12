@@ -15,7 +15,8 @@ import { Header } from "../components/Header";
 const roleLabels = [
   ["membre", "Membre"],
   ["contributeur", "Contributeur"],
-  ["admin", "Admin"]
+  ["admin", "Administrateur"],
+  ["super_admin", "Super administrateur"]
 ] as const;
 
 function makeInviteCode() {
@@ -38,10 +39,12 @@ type MemberForm = {
 };
 
 export function AdminScreen({
+  currentMember,
   members,
   events,
   onBack
 }: {
+  currentMember: Member | null;
   members: Member[];
   events: LuminaEvent[];
   onBack: () => void;
@@ -59,6 +62,17 @@ export function AdminScreen({
     [members]
   );
 
+  const isSuperAdmin = currentMember?.role === "super_admin";
+  const superAdminCount = members.filter((item) => item.role === "super_admin").length;
+  const availableRoles = isSuperAdmin
+    ? roleLabels
+    : roleLabels.filter(([value]) => value === "membre" || value === "contributeur");
+
+  function canManageTarget(target: Member) {
+    if (isSuperAdmin) return true;
+    return target.role === "membre" || target.role === "contributeur";
+  }
+
   function openNewMember() {
     setForm({
       prenom: "",
@@ -69,6 +83,10 @@ export function AdminScreen({
   }
 
   function openEditMember(member: Member) {
+    if (!canManageTarget(member)) {
+      setNotice("Seul un super administrateur peut modifier ce rôle.");
+      return;
+    }
     setForm({
       id: member.id,
       prenom: member.prenom,
@@ -84,6 +102,15 @@ export function AdminScreen({
     if (!form || !form.prenom.trim() || !form.nom.trim()) return;
 
     setNotice("");
+    if (!isSuperAdmin && !["membre", "contributeur"].includes(form.role)) {
+      setNotice("Un administrateur ne peut gérer que les rôles inférieurs.");
+      return;
+    }
+    const original = form.id ? members.find((item) => item.id === form.id) : undefined;
+    if (original?.role === "super_admin" && form.role !== "super_admin" && superAdminCount <= 1) {
+      setNotice("Le dernier super administrateur ne peut pas être rétrogradé.");
+      return;
+    }
 
     if (!form.id) {
       const inviteCode = makeInviteCode();
@@ -117,8 +144,9 @@ export function AdminScreen({
 
     if (form.uid) {
       await setDoc(doc(db, "userRoles", form.uid), {
-        role: form.role
-      });
+        role: form.role,
+        memberId: form.id
+      }, { merge: true });
     }
 
     setForm(null);
@@ -141,6 +169,21 @@ export function AdminScreen({
 
   async function removeMember() {
     if (!deleting) return;
+    if (!canManageTarget(deleting)) {
+      setNotice("Seul un super administrateur peut supprimer ce membre.");
+      setDeleting(null);
+      return;
+    }
+    if (deleting.uid && deleting.uid === currentMember?.uid) {
+      setNotice("Tu ne peux pas supprimer ton propre profil administratif.");
+      setDeleting(null);
+      return;
+    }
+    if (deleting.role === "super_admin" && superAdminCount <= 1) {
+      setNotice("Le dernier super administrateur ne peut pas être supprimé.");
+      setDeleting(null);
+      return;
+    }
 
     await deleteDoc(doc(db, "members", deleting.id));
 
@@ -205,6 +248,7 @@ export function AdminScreen({
                       <button
                         type="button"
                         aria-label="Modifier"
+                        disabled={!canManageTarget(member)}
                         onClick={() => openEditMember(member)}
                       >
                         <svg viewBox="0 0 24 24">
@@ -216,6 +260,7 @@ export function AdminScreen({
                       <button
                         type="button"
                         aria-label="Supprimer"
+                        disabled={!canManageTarget(member) || member.uid === currentMember?.uid}
                         onClick={() => setDeleting(member)}
                       >
                         <svg viewBox="0 0 24 24">
@@ -352,7 +397,7 @@ export function AdminScreen({
                   value={form.role}
                   onChange={(e) => setForm({ ...form, role: e.target.value })}
                 >
-                  {roleLabels.map(([value, label]) => (
+                  {availableRoles.map(([value, label]) => (
                     <option value={value} key={value}>{label}</option>
                   ))}
                 </select>

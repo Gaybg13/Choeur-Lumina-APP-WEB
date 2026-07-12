@@ -13,13 +13,22 @@ function notificationTag(payload) {
   return "lumina_general";
 }
 
-function messageActions(payload) {
+function notificationActions(payload) {
   const type = payload.data?.type || "";
-  if (type !== "group_message" && type !== "direct_message") return [];
-  return [
-    { action: "reply", title: "Répondre" },
-    { action: "mark_read", title: "Marquer comme lu" }
-  ];
+  if (type === "group_message" || type === "direct_message") {
+    return [
+      { action: "reply", title: "Répondre" },
+      { action: "mark_read", title: "Marquer comme lu" }
+    ];
+  }
+  if (type === "event_created") {
+    return [
+      { action: "presence_present", title: "Présent" },
+      { action: "presence_maybe", title: "Peut-être" },
+      { action: "presence_absent", title: "Absent" }
+    ];
+  }
+  return [];
 }
 
 messaging.onBackgroundMessage((payload) => {
@@ -33,7 +42,7 @@ messaging.onBackgroundMessage((payload) => {
     badge: "/icons/icon-192.png",
     tag: notificationTag(payload),
     renotify: true,
-    actions: messageActions(payload),
+    actions: notificationActions(payload),
     data: { link, ...(payload.data || {}) }
   });
 });
@@ -53,6 +62,17 @@ self.addEventListener("notificationclick", (event) => {
 
   if (event.action === "reply") {
     url.searchParams.set("focusComposer", "1");
+  }
+
+  if (event.action === "presence_present" || event.action === "presence_maybe" || event.action === "presence_absent") {
+    const value = event.action === "presence_present"
+      ? "present"
+      : event.action === "presence_maybe"
+        ? "peut-etre"
+        : "absent";
+    url.searchParams.set("tab", "agenda");
+    url.searchParams.set("notificationAction", `presence_${value}`);
+    if (data.eventId) url.searchParams.set("eventId", data.eventId);
   }
 
   const target = `${url.pathname}${url.search}`;

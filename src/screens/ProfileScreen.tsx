@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "firebase/auth";
-import { doc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
 import { auth, db, storage } from "../lib/firebase";
 import { enableNotifications } from "../lib/notifications";
@@ -21,6 +21,9 @@ export function ProfileScreen({
   const [notice, setNotice] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
   const [cropSource, setCropSource] = useState<string | null>(null);
+  const [showSuggestion, setShowSuggestion] = useState(false);
+  const [suggestionText, setSuggestionText] = useState("");
+  const [suggestionBusy, setSuggestionBusy] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   async function saveBirthday() {
@@ -67,6 +70,27 @@ export function ProfileScreen({
     setCropSource(url);
   }
 
+
+  async function submitSuggestion() {
+    const text = suggestionText.trim();
+    if (!text) return;
+    setSuggestionBusy(true);
+    try {
+      await addDoc(collection(db, "anonymousSuggestions"), {
+        text,
+        createdAt: serverTimestamp()
+      });
+      setSuggestionText("");
+      setShowSuggestion(false);
+      setNotice("Proposition envoyée.");
+    } catch (error) {
+      console.error(error);
+      setNotice("Impossible d'envoyer la proposition.");
+    } finally {
+      setSuggestionBusy(false);
+    }
+  }
+
   async function notifications() {
     const token = await enableNotifications();
     setNotice(
@@ -109,7 +133,7 @@ export function ProfileScreen({
           <p><strong>Pupitre</strong><br />{member?.pupitre || "Non renseigné"}</p>
         </article>
 
-        {member?.role === "admin" && (
+        {(member?.role === "admin" || member?.role === "super_admin") && (
           <article className="card profile-admin-card">
             <div className="profile-admin-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24">
@@ -165,6 +189,15 @@ export function ProfileScreen({
           </button>
         </article>
 
+        <button
+          type="button"
+          className="suggestion-profile-button"
+          onClick={() => setShowSuggestion(true)}
+        >
+          <span>Proposer une amélioration ou une activité</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21h6M10 17h4M8.2 14.5A7 7 0 1 1 15.8 14.5C14.8 15.3 14.3 16 14.1 17h-4.2c-.2-1-.7-1.7-1.7-2.5Z" /></svg>
+        </button>
+
         <article className="card">
           <h2>Notifications</h2>
           <p>
@@ -185,6 +218,36 @@ export function ProfileScreen({
           Se déconnecter
         </button>
       </section>
+
+
+      {showSuggestion && (
+        <div className="modal-backdrop" onClick={() => setShowSuggestion(false)}>
+          <div className="admin-modal suggestion-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-title-row">
+              <div><span className="section-kicker">CHŒUR LUMINA</span><h2>Faire une proposition</h2></div>
+              <button onClick={() => setShowSuggestion(false)}>×</button>
+            </div>
+            <textarea
+              rows={6}
+              maxLength={500}
+              value={suggestionText}
+              onChange={(event) => setSuggestionText(event.target.value)}
+              placeholder="Proposer une amélioration ou une activité…"
+            />
+            <small className="suggestion-counter">{suggestionText.length}/500</small>
+            <div className="modal-actions">
+              <button onClick={() => setShowSuggestion(false)}>Annuler</button>
+              <button
+                className="primary"
+                disabled={!suggestionText.trim() || suggestionBusy}
+                onClick={() => void submitSuggestion()}
+              >
+                Envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {cropSource && (
         <PhotoCropModal

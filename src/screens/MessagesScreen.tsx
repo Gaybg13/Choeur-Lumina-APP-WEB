@@ -23,6 +23,7 @@ import {
 import { db, storage } from "../lib/firebase";
 import { Header } from "../components/Header";
 import type {
+  Announcement,
   ConversationSummary,
   DirectMessage,
   GroupMessage,
@@ -158,10 +159,12 @@ export function MessagesScreen({
   uid,
   member,
   members,
+  announcements,
 }: {
   uid: string;
   member: Member | null;
   members: Member[];
+  announcements: Announcement[];
 }) {
   const [mode, setMode] = useState<"group" | "private">(() => {
     const params = new URLSearchParams(window.location.search);
@@ -211,6 +214,8 @@ export function MessagesScreen({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderStreamRef = useRef<MediaStream | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
+  const isSuperAdmin = member?.role === "super_admin";
+  const newsTickerText = announcements.map((item) => item.text.trim()).filter(Boolean).join("   •   ") || "Aucune actualité pour le moment.";
 
   const otherMembers = useMemo(() => {
     const conversationTimes = new Map(
@@ -754,6 +759,25 @@ export function MessagesScreen({
     }
   }
 
+  async function resetPublicConversation() {
+    if (!isSuperAdmin || !groupMessages.length) return;
+    if (!window.confirm("Réinitialiser toute la conversation publique ? Les conversations privées ne seront pas touchées.")) return;
+    setBusy("reset-public");
+    try {
+      for (let index = 0; index < groupMessages.length; index += 400) {
+        const batch = writeBatch(db);
+        groupMessages.slice(index, index + 400).forEach((message) => batch.delete(doc(db, "groupChat", message.id)));
+        await batch.commit();
+      }
+      setNotice("Conversation publique réinitialisée.");
+    } catch (error) {
+      console.error(error);
+      setNotice("Impossible de réinitialiser la conversation publique.");
+    } finally {
+      setBusy("");
+    }
+  }
+
   function startReply(message: AnyMessage) {
     const author =
       message.authorUid === uid
@@ -829,6 +853,11 @@ export function MessagesScreen({
           >
             Privé {privateUnreadTotal > 0 && <b>{privateUnreadTotal}</b>}
           </button>
+        </div>
+
+        <div className="message-news-ticker" aria-label="Actualités du chœur">
+          <strong>INFOS</strong>
+          <div><span>{newsTickerText}</span></div>
         </div>
 
         {notice && <p className="notice message-notice">{notice}</p>}
@@ -931,6 +960,7 @@ export function MessagesScreen({
                     onSelect={(message) => toggleSelected(message.id)}
                     onPin={togglePin}
                     members={members}
+                    canModerateGroup={isSuperAdmin}
                   />
                   {directTyping && (
                     <div className="typing-indicator">
@@ -973,7 +1003,7 @@ export function MessagesScreen({
           <div className="group-chat-shell">
             <div className="group-chat-head">
               <div className="group-avatar">♫</div>
-              <div>
+              <div className="group-chat-title-copy">
                 <strong>Groupe Chœur Lumina</strong>
                 <small>
                   {groupTypers.length
@@ -981,6 +1011,17 @@ export function MessagesScreen({
                     : `${members.filter((m) => Boolean(m.uid)).length} membre(s)`}
                 </small>
               </div>
+              {isSuperAdmin && (
+                <button
+                  className="reset-public-chat-button"
+                  aria-label="Réinitialiser la conversation publique"
+                  title="Réinitialiser la conversation publique"
+                  disabled={busy === "reset-public" || groupMessages.length === 0}
+                  onClick={() => void resetPublicConversation()}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg>
+                </button>
+              )}
             </div>
             <MessagePane
               messages={visibleMessages}
@@ -997,6 +1038,7 @@ export function MessagesScreen({
               onSelect={(message) => toggleSelected(message.id)}
               onPin={togglePin}
               members={members}
+              canModerateGroup={isSuperAdmin}
             />
             {groupTypers.length > 0 && (
               <div className="typing-indicator">
@@ -1090,6 +1132,7 @@ function MessagePane({
   onSelect,
   onPin,
   members,
+  canModerateGroup,
 }: {
   messages: AnyMessage[];
   uid: string;
@@ -1106,6 +1149,7 @@ function MessagePane({
   onSelect: (message: AnyMessage) => void;
   onPin: (message: AnyMessage) => Promise<void>;
   members: Member[];
+  canModerateGroup: boolean;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const previousCountRef = useRef(0);
@@ -1362,7 +1406,7 @@ function MessagePane({
                         Modifier
                       </button>
                     )}
-                    {mine && !message.deleted && (
+                    {(mine || (mode === "group" && canModerateGroup)) && !message.deleted && (
                       <button
                         className="danger-text"
                         onClick={() => void onDeleteEveryone(message)}
